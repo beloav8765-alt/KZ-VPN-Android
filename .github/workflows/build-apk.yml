@@ -43,12 +43,12 @@ jobs:
 
       - name: Rename APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk KzVpn-0.3.1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk KzVpn-0.3.2-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: KzVpn-0.3.1-debug
-          path: KzVpn-0.3.1-debug.apk
+          name: KzVpn-0.3.2-debug
+          path: KzVpn-0.3.2-debug.apk
           if-no-files-found: error
           retention-days: 14
