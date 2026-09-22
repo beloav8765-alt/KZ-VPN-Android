@@ -112,6 +112,8 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             isAllCaps = false
             setTypeface(typeface, Typeface.BOLD)
+            setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_power, 0, 0)
+            compoundDrawablePadding = dp(10)
             stateListAnimator = null
             isEnabled = false
             background = circleDrawable(PRIMARY, PRIMARY)
@@ -168,7 +170,7 @@ class MainActivity : Activity() {
 
         root.addView(statsRow, lp(top = 12))
 
-        importButton = secondaryButton("Импорт профиля VPN") {
+        importButton = secondaryButton("Профиль VPN") {
             startActivityForResult(
                 Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -198,7 +200,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Nivora 0.4.1", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Nivora 0.4.2", 11f, TEXT_SOFT), lp(top = 22))
 
         return scroll
     }
