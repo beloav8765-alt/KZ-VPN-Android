@@ -69,9 +69,9 @@ class MainActivity : Activity() {
                 if (bold) setTypeface(typeface, Typeface.BOLD)
             }
 
-        root.addView(label("KZ VPN", 34f, TEXT_DARK, true), lp())
-        root.addView(label("Личный WireGuard", 17f, TEXT_MUTED), lp(top = 4))
-        root.addView(label("Версия 0.3.4 • GitHub build", 12f, TEXT_SOFT), lp(top = 4))
+        root.addView(label("LNK Connect", 30f, TEXT_DARK, true), lp())
+        root.addView(label("Защищённое соединение", 16f, TEXT_MUTED), lp(top = 4))
+        root.addView(label("Версия 0.3.5 • GitHub build", 12f, TEXT_SOFT), lp(top = 4))
 
         status = label("Отключено", 26f, TEXT_MUTED, true)
         root.addView(status, lp(top = 28))
@@ -82,7 +82,7 @@ class MainActivity : Activity() {
         root.addView(Space(this), LinearLayout.LayoutParams(1, dp(26)))
 
         connectButton = Button(this).apply {
-            text = "ВКЛЮЧИТЬ\nVPN"
+            text = "ВКЛЮЧИТЬ VPN"
             textSize = 22f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -90,7 +90,7 @@ class MainActivity : Activity() {
             setTypeface(typeface, Typeface.BOLD)
             stateListAnimator = null
             isEnabled = false
-            background = circleDrawable(PRIMARY, PRIMARY_BORDER)
+            background = roundedDrawable(PRIMARY, PRIMARY_BORDER, dp(18).toFloat())
             setPadding(dp(14), dp(14), dp(14), dp(14))
             elevation = dp(8).toFloat()
             setOnClickListener {
@@ -103,7 +103,7 @@ class MainActivity : Activity() {
         }
         root.addView(
             connectButton,
-            LinearLayout.LayoutParams(dp(220), dp(220)).apply {
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(88)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
@@ -193,7 +193,7 @@ class MainActivity : Activity() {
         status.text = when (state.connectionStatus) {
             VpnController.ConnectionStatus.DISCONNECTED -> "Отключено"
             VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
-            VpnController.ConnectionStatus.CONNECTED -> "Подключено • Казахстан"
+            VpnController.ConnectionStatus.CONNECTED -> "Подключено"
             VpnController.ConnectionStatus.DISCONNECTING -> "Отключение…"
         }
         status.setTextColor(if (connected) SUCCESS else TEXT_MUTED)
@@ -207,11 +207,11 @@ class MainActivity : Activity() {
                 (state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED ||
                     state.connectionStatus == VpnController.ConnectionStatus.CONNECTED)
 
-        connectButton.text = if (connected) "ВЫКЛЮЧИТЬ\nVPN" else "ВКЛЮЧИТЬ\nVPN"
+        connectButton.text = if (connected) "ВЫКЛЮЧИТЬ VPN" else "ВКЛЮЧИТЬ VPN"
         connectButton.background = when {
-            !connectButton.isEnabled -> circleDrawable(DISABLED, DISABLED_BORDER)
-            connected -> circleDrawable(PRIMARY_DARK, PRIMARY)
-            else -> circleDrawable(PRIMARY, PRIMARY_BORDER)
+            !connectButton.isEnabled -> roundedDrawable(DISABLED, DISABLED_BORDER, dp(18).toFloat())
+            connected -> roundedDrawable(PRIMARY_DARK, PRIMARY, dp(18).toFloat())
+            else -> roundedDrawable(PRIMARY, PRIMARY_BORDER, dp(18).toFloat())
         }
 
         importButton.isEnabled =
@@ -272,20 +272,20 @@ class MainActivity : Activity() {
         private const val REQ_VPN = 1001
         private const val REQ_CONFIG = 1002
 
-        private val BG = Color.rgb(235, 246, 255)
-        private val CARD = Color.rgb(255, 255, 255)
-        private val PRIMARY = Color.rgb(78, 161, 235)
-        private val PRIMARY_DARK = Color.rgb(43, 118, 190)
-        private val PRIMARY_BORDER = Color.rgb(173, 215, 248)
-        private val BORDER = Color.rgb(190, 220, 244)
-        private val TEXT_DARK = Color.rgb(31, 76, 115)
-        private val TEXT_MUTED = Color.rgb(91, 128, 157)
-        private val TEXT_SOFT = Color.rgb(129, 160, 184)
-        private val SUCCESS = Color.rgb(39, 154, 105)
+        private val BG = Color.rgb(239, 243, 246)
+        private val CARD = Color.rgb(248, 250, 251)
+        private val PRIMARY = Color.rgb(46, 98, 138)
+        private val PRIMARY_DARK = Color.rgb(35, 78, 112)
+        private val PRIMARY_BORDER = Color.rgb(92, 137, 170)
+        private val BORDER = Color.rgb(199, 211, 219)
+        private val TEXT_DARK = Color.rgb(48, 73, 91)
+        private val TEXT_MUTED = Color.rgb(105, 124, 138)
+        private val TEXT_SOFT = Color.rgb(148, 162, 172)
+        private val SUCCESS = Color.rgb(45, 125, 104)
         private val ERROR = Color.rgb(181, 56, 56)
         private val ERROR_BG = Color.rgb(255, 240, 240)
         private val ERROR_BORDER = Color.rgb(245, 190, 190)
-        private val DISABLED = Color.rgb(188, 211, 228)
-        private val DISABLED_BORDER = Color.rgb(211, 228, 240)
+        private val DISABLED = Color.rgb(218, 225, 230)
+        private val DISABLED_BORDER = Color.rgb(229, 234, 238)
     }
 }
