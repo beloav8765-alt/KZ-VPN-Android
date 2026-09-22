@@ -466,7 +466,7 @@ class VpnController(context: Context) {
     }
 
     companion object {
-        private const val TUNNEL_NAME = "nivora"
+        private const val TUNNEL_NAME = "eneida"
         private const val MAX_CONFIG_SIZE = 1_048_576
         private val ENDPOINT_REGEX = Regex("(?im)^\\s*Endpoint\\s*=\\s*(.+)$")
     }
