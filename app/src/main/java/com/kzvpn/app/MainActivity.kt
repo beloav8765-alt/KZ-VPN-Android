@@ -35,6 +35,7 @@ class MainActivity : Activity() {
     private lateinit var statusHint: TextView
     private lateinit var sessionText: TextView
     private lateinit var serverValue: TextView
+    private lateinit var serverHint: TextView
     private lateinit var rxValue: TextView
     private lateinit var txValue: TextView
     private lateinit var rxRateValue: TextView
@@ -42,9 +43,7 @@ class MainActivity : Activity() {
     private lateinit var message: TextView
     private lateinit var connectButton: Button
     private lateinit var powerRing: FrameLayout
-    private lateinit var importButton: Button
-    private lateinit var settingsButton: Button
-    private lateinit var forgetButton: Button
+    private lateinit var serversButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -154,11 +153,13 @@ class MainActivity : Activity() {
             setPadding(dp(18), dp(15), dp(18), dp(15))
             background = roundedDrawable(CARD, BORDER, dp(18).toFloat())
             elevation = dp(2).toFloat()
+            setOnClickListener { openServers() }
         }
         serverCard.addView(label("СЕРВЕР", 11f, TEXT_SOFT, true).apply { gravity = Gravity.START })
         serverValue = label("Профиль не выбран", 17f, TEXT_DARK, true).apply { gravity = Gravity.START }
         serverCard.addView(serverValue, lp(top = 6))
-        serverCard.addView(label("WireGuard • защищённый туннель", 12f, TEXT_MUTED).apply { gravity = Gravity.START }, lp(top = 5))
+        serverHint = label("Нажмите, чтобы выбрать сервер", 12f, TEXT_MUTED).apply { gravity = Gravity.START }
+        serverCard.addView(serverHint, lp(top = 5))
         root.addView(serverCard, lp())
 
         val statsRow = LinearLayout(this).apply {
@@ -180,28 +181,13 @@ class MainActivity : Activity() {
 
         root.addView(statsRow, lp(top = 12))
 
-        importButton = secondaryButton("Профиль VPN") {
-            startActivityForResult(
-                Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "*/*"
-                },
-                REQ_CONFIG
-            )
-        }
-        root.addView(importButton, lp(top = 18))
+        serversButton = secondaryButton("Серверы") { openServers() }
+        root.addView(serversButton, lp(top = 18))
 
-        settingsButton = secondaryButton("Постоянная защита") {
+        val settingsButton = secondaryButton("Постоянная защита") {
             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
         }
         root.addView(settingsButton, lp(top = 10))
-
-        forgetButton = textButton("Удалить профиль") {
-            controller.forgetConfig()
-        }.apply {
-            visibility = View.GONE
-        }
-        root.addView(forgetButton, lp(top = 6))
 
         message = label("", 13f, ERROR, true).apply {
             background = roundedDrawable(ERROR_BG, ERROR_BORDER, dp(16).toFloat())
@@ -210,8 +196,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Nivora 0.5.0", 11f, TEXT_SOFT), lp(top = 22))
-
+        root.addView(label("Nivora 0.6.0", 11f, TEXT_SOFT), lp(top = 22))
         return scroll
     }
 
@@ -260,16 +245,9 @@ class MainActivity : Activity() {
             setOnClickListener { action() }
         }
 
-    private fun textButton(title: String, action: () -> Unit): Button =
-        Button(this).apply {
-            text = title
-            textSize = 13f
-            setTextColor(TEXT_MUTED)
-            isAllCaps = false
-            stateListAnimator = null
-            background = roundedDrawable(BG, BG, dp(12).toFloat())
-            setOnClickListener { action() }
-        }
+    private fun openServers() {
+        startActivity(Intent(this, ServersActivity::class.java))
+    }
 
     private fun requestVpn() {
         val intent = VpnService.prepare(this)
@@ -283,20 +261,9 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Android API, kept intentionally for a minimal no-AndroidX UI build")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-
-        when (requestCode) {
-            REQ_VPN -> {
-                if (resultCode == RESULT_OK) controller.connect()
-                else controller.setMessage("Разрешение Android на создание VPN не выдано")
-            }
-
-            REQ_CONFIG -> {
-                val uri = data?.data ?: return
-                runCatching { contentResolver.openInputStream(uri) }
-                    .getOrNull()
-                    ?.let(controller::importConfig)
-                    ?: controller.setMessage("Не удалось открыть выбранный файл")
-            }
+        if (requestCode == REQ_VPN) {
+            if (resultCode == RESULT_OK) controller.connect()
+            else controller.setMessage("Разрешение Android на создание VPN не выдано")
         }
     }
 
@@ -313,16 +280,19 @@ class MainActivity : Activity() {
         status.setTextColor(if (connected) SUCCESS else TEXT_DARK)
 
         statusHint.text = when {
-            connected -> "Весь IPv4-трафик направляется через VPN"
-            !state.configured -> "Импортируйте профиль WireGuard для подключения"
+            connected -> "Интернет-соединение защищено"
+            !state.configured -> "Добавьте VPN-сервер для подключения"
             else -> "Нажмите кнопку, чтобы включить защиту"
         }
 
-        serverValue.text =
-            if (state.configured) "Основной сервер" else "Профиль не выбран"
+        serverValue.text = state.activeServerName
+        serverHint.text = when {
+            state.servers.size > 1 -> "\${state.servers.size} серверов • нажмите для быстрой смены"
+            state.configured -> "WireGuard • нажмите для управления"
+            else -> "Нажмите, чтобы добавить сервер"
+        }
 
-        connectButton.isEnabled =
-            state.configured && (disconnected || connected)
+        connectButton.isEnabled = state.configured && (disconnected || connected)
 
         connectButton.text = when (state.connectionStatus) {
             VpnController.ConnectionStatus.CONNECTED -> "ОТКЛЮЧИТЬ"
@@ -343,15 +313,11 @@ class MainActivity : Activity() {
             else -> circleDrawable(RING_IDLE, RING_IDLE)
         }
 
-        importButton.isEnabled = disconnected
-
-        forgetButton.visibility =
-            if (state.configured && disconnected) View.VISIBLE else View.GONE
-
         rxValue.text = formatBytes(state.rxBytes)
         txValue.text = formatBytes(state.txBytes)
         rxRateValue.text = formatRate(state.rxRate)
         txRateValue.text = formatRate(state.txRate)
+
         sessionText.visibility = if (connected) View.VISIBLE else View.GONE
         sessionText.text = "Сеанс " + formatDuration(state.sessionSeconds)
 
@@ -410,7 +376,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQ_VPN = 1001
-        private const val REQ_CONFIG = 1002
 
         private val BG = Color.rgb(239, 243, 246)
         private val CARD = Color.rgb(250, 252, 253)

@@ -11,6 +11,9 @@
         android:theme="@style/Theme.KzVpn"
         android:usesCleartextTraffic="false">
         <activity
+            android:name="com.kzvpn.app.ServersActivity"
+            android:exported="false" />
+        <activity
             android:name="com.kzvpn.app.MainActivity"
             android:exported="true">
             <intent-filter>
