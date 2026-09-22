@@ -69,9 +69,9 @@ class MainActivity : Activity() {
                 if (bold) setTypeface(typeface, Typeface.BOLD)
             }
 
-        root.addView(label("LNK Connect", 30f, TEXT_DARK, true), lp())
+        root.addView(label("Nivora", 30f, TEXT_DARK, true), lp())
         root.addView(label("Защищённое соединение", 16f, TEXT_MUTED), lp(top = 4))
-        root.addView(label("Версия 0.3.5 • GitHub build", 12f, TEXT_SOFT), lp(top = 4))
+        root.addView(label("Версия 0.3.6 • GitHub build", 12f, TEXT_SOFT), lp(top = 4))
 
         status = label("Отключено", 26f, TEXT_MUTED, true)
         root.addView(status, lp(top = 28))
