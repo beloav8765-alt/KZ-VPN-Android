@@ -89,7 +89,7 @@ class MainActivity : Activity() {
             }
 
         root.addView(label("Nivora", 31f, TEXT_DARK, true), lp())
-        root.addView(label("Private VPN", 14f, TEXT_MUTED), lp(top = 5))
+        root.addView(label("Личный VPN", 14f, TEXT_MUTED), lp(top = 5))
 
         status = label("VPN отключён", 23f, TEXT_DARK, true)
         root.addView(status, lp(top = 24))
@@ -106,7 +106,7 @@ class MainActivity : Activity() {
         }
 
         connectButton = Button(this).apply {
-            text = "⏻\nПОДКЛЮЧИТЬ"
+            text = "ПОДКЛЮЧИТЬ"
             textSize = 18f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -115,7 +115,7 @@ class MainActivity : Activity() {
             stateListAnimator = null
             isEnabled = false
             background = circleDrawable(PRIMARY, PRIMARY)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setPadding(dp(12), dp(18), dp(12), dp(18))
             elevation = dp(8).toFloat()
             setOnClickListener {
                 when (controller.state.value.connectionStatus) {
@@ -168,7 +168,7 @@ class MainActivity : Activity() {
 
         root.addView(statsRow, lp(top = 12))
 
-        importButton = secondaryButton("Профиль VPN") {
+        importButton = secondaryButton("Импорт профиля VPN") {
             startActivityForResult(
                 Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -179,7 +179,7 @@ class MainActivity : Activity() {
         }
         root.addView(importButton, lp(top = 18))
 
-        settingsButton = secondaryButton("Always-on / Kill Switch") {
+        settingsButton = secondaryButton("Постоянная защита") {
             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
         }
         root.addView(settingsButton, lp(top = 10))
@@ -198,7 +198,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Nivora 0.4.0", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Nivora 0.4.1", 11f, TEXT_SOFT), lp(top = 22))
 
         return scroll
     }
@@ -299,18 +299,17 @@ class MainActivity : Activity() {
             else -> "Нажмите кнопку, чтобы включить защиту"
         }
 
-        serverValue.text = state.endpoint.ifBlank {
-            if (state.configured) "Профиль WireGuard" else "Профиль не выбран"
-        }
+        serverValue.text =
+            if (state.configured) "Основной сервер" else "Профиль не выбран"
 
         connectButton.isEnabled =
             state.configured && (disconnected || connected)
 
         connectButton.text = when (state.connectionStatus) {
-            VpnController.ConnectionStatus.CONNECTED -> "⏻\nОТКЛЮЧИТЬ"
-            VpnController.ConnectionStatus.CONNECTING -> "…\nПОДКЛЮЧЕНИЕ"
-            VpnController.ConnectionStatus.DISCONNECTING -> "…\nОТКЛЮЧЕНИЕ"
-            VpnController.ConnectionStatus.DISCONNECTED -> "⏻\nПОДКЛЮЧИТЬ"
+            VpnController.ConnectionStatus.CONNECTED -> "ОТКЛЮЧИТЬ"
+            VpnController.ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ…"
+            VpnController.ConnectionStatus.DISCONNECTING -> "ОТКЛЮЧЕНИЕ…"
+            VpnController.ConnectionStatus.DISCONNECTED -> "ПОДКЛЮЧИТЬ"
         }
 
         connectButton.background = when {
