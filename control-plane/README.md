@@ -1,35 +1,39 @@
-# Nivora Control
+# Eneida Control
 
-Control plane for Nivora VPN.
+Control plane for Eneida VPN.
 
-## First version
-- private admin API protected by a bearer token;
-- web admin panel at /admin;
-- add, enable/disable, maintenance mode, delete VPN servers;
-- SQLite server registry;
-- client endpoint with only enabled/non-maintenance servers;
-- heartbeat endpoint for load and active client count.
+## VPN management
+- private admin API;
+- server registry;
+- enable/disable and maintenance mode;
+- server load and client count;
+- public list of available VPN nodes.
 
-This foundation does not yet SSH into VPN servers or modify WireGuard peers remotely.
+## Payments
 
-## Security
-Never commit root passwords, WireGuard private keys, client private keys, or the real admin token.
-VPN server private keys stay on each VPN server. Future Nivora clients generate their private key locally and send only the public key to the control plane.
+The agreed tariff is 399 RUB for 30 days.
 
-## Run
-    export NIVORA_ADMIN_TOKEN='replace-with-a-long-random-secret'
-    python -m venv .venv
-    . .venv/bin/activate
-    pip install -r requirements.txt
-    uvicorn app.main:app --host 0.0.0.0 --port 8080
+Payment flow:
+1. Android creates an order.
+2. Eneida Control asks a Monero view-only wallet through monero-wallet-rpc for a unique subaddress.
+3. The 399 RUB price is converted to XMR for that order.
+4. The app shows exact XMR amount, address and QR/payment URI.
+5. Eneida watches the incoming transaction.
+6. After 1 confirmation the 30-day subscription is activated automatically.
 
-Admin: http://SERVER:8080/admin
-Health: GET /health
-Client registry: GET /api/v1/public/servers
+The Cake Wallet wallet remains the main wallet. Do not place its seed or private spend key on the server or in GitHub. The server-side wallet should be view-only, so it can monitor payments without spending funds.
 
-## Next
-1. WireGuard server agent.
-2. Device registration and public-key provisioning.
-3. Automatic server selection and failover.
-4. Admin audit log and proper login/session.
-5. Connect Android Nivora so users never import .conf files manually.
+## Android API URL
+
+Android reads ENEIDA_API_BASE_URL at build time. Set the GitHub repository variable ENEIDA_API_BASE_URL to the HTTPS address of Eneida Control.
+
+Until HTTPS is deployed, the payment screen stays disabled instead of sending payment data over cleartext HTTP.
+
+## Secrets
+
+Never commit:
+- admin token;
+- wallet seed;
+- Monero private spend key;
+- WireGuard private keys;
+- RPC passwords.
