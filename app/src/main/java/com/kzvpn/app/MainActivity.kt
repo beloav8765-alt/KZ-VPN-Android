@@ -66,7 +66,7 @@ class MainActivity : Activity() {
 
         root.addView(makeText("KZ VPN", 30f))
         root.addView(makeText("Личный WireGuard", 15f, Color.rgb(184, 194, 204)))
-        root.addView(makeText("Версия 0.3.2 • GitHub build", 12f, Color.rgb(130, 140, 150)))
+        root.addView(makeText("Версия 0.3.3 • GitHub build", 12f, Color.rgb(130, 140, 150)))
 
         status = makeText("Отключено", 20f, Color.rgb(184, 194, 204))
         root.addView(status, lp())
