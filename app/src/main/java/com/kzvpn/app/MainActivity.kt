@@ -12,7 +12,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
@@ -30,10 +32,13 @@ class MainActivity : Activity() {
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private lateinit var status: TextView
-    private lateinit var endpoint: TextView
-    private lateinit var traffic: TextView
+    private lateinit var statusHint: TextView
+    private lateinit var serverValue: TextView
+    private lateinit var rxValue: TextView
+    private lateinit var txValue: TextView
     private lateinit var message: TextView
     private lateinit var connectButton: Button
+    private lateinit var powerRing: FrameLayout
     private lateinit var importButton: Button
     private lateinit var settingsButton: Button
     private lateinit var forgetButton: Button
@@ -52,13 +57,26 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun buildUi(): LinearLayout {
+    private fun buildUi(): View {
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(BG)
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(22), dp(24), dp(22))
+            setPadding(dp(22), dp(20), dp(22), dp(28))
             setBackgroundColor(BG)
         }
+        scroll.addView(
+            root,
+            ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         fun label(value: String, size: Float, color: Int, bold: Boolean = false): TextView =
             TextView(this).apply {
@@ -66,32 +84,38 @@ class MainActivity : Activity() {
                 textSize = size
                 setTextColor(color)
                 gravity = Gravity.CENTER
+                includeFontPadding = false
                 if (bold) setTypeface(typeface, Typeface.BOLD)
             }
 
-        root.addView(label("Nivora", 30f, TEXT_DARK, true), lp())
-        root.addView(label("Защищённое соединение", 16f, TEXT_MUTED), lp(top = 4))
-        root.addView(label("Версия 0.3.6 • GitHub build", 12f, TEXT_SOFT), lp(top = 4))
+        root.addView(label("Nivora", 31f, TEXT_DARK, true), lp())
+        root.addView(label("Private VPN", 14f, TEXT_MUTED), lp(top = 5))
 
-        status = label("Отключено", 26f, TEXT_MUTED, true)
-        root.addView(status, lp(top = 28))
+        status = label("VPN отключён", 23f, TEXT_DARK, true)
+        root.addView(status, lp(top = 24))
 
-        endpoint = label("Конфигурация не загружена", 15f, TEXT_MUTED)
-        root.addView(endpoint, lp(top = 8))
+        statusHint = label("Подключитесь, чтобы защитить интернет-соединение", 13f, TEXT_MUTED)
+        statusHint.setPadding(dp(10), 0, dp(10), 0)
+        root.addView(statusHint, lp(top = 8))
 
         root.addView(Space(this), LinearLayout.LayoutParams(1, dp(26)))
 
+        powerRing = FrameLayout(this).apply {
+            background = circleDrawable(RING_IDLE, RING_IDLE)
+            elevation = dp(5).toFloat()
+        }
+
         connectButton = Button(this).apply {
-            text = "ВКЛЮЧИТЬ VPN"
-            textSize = 22f
+            text = "⏻\nПОДКЛЮЧИТЬ"
+            textSize = 18f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             isAllCaps = false
             setTypeface(typeface, Typeface.BOLD)
             stateListAnimator = null
             isEnabled = false
-            background = roundedDrawable(PRIMARY, PRIMARY_BORDER, dp(18).toFloat())
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = circleDrawable(PRIMARY, PRIMARY)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             elevation = dp(8).toFloat()
             setOnClickListener {
                 when (controller.state.value.connectionStatus) {
@@ -101,19 +125,50 @@ class MainActivity : Activity() {
                 }
             }
         }
-        root.addView(
+
+        powerRing.addView(
             connectButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(88)).apply {
+            FrameLayout.LayoutParams(dp(174), dp(174), Gravity.CENTER)
+        )
+        root.addView(
+            powerRing,
+            LinearLayout.LayoutParams(dp(210), dp(210)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
 
-        traffic = label("↓ 0 B      ↑ 0 B", 17f, TEXT_DARK, true)
-        traffic.background = roundedDrawable(CARD, BORDER, dp(22).toFloat())
-        traffic.setPadding(dp(18), dp(14), dp(18), dp(14))
-        root.addView(traffic, lp(top = 24))
+        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(24)))
 
-        importButton = secondaryButton("Импортировать WireGuard .conf") {
+        val serverCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(15), dp(18), dp(15))
+            background = roundedDrawable(CARD, BORDER, dp(18).toFloat())
+            elevation = dp(2).toFloat()
+        }
+        serverCard.addView(label("СЕРВЕР", 11f, TEXT_SOFT, true).apply { gravity = Gravity.START })
+        serverValue = label("Профиль не выбран", 17f, TEXT_DARK, true).apply { gravity = Gravity.START }
+        serverCard.addView(serverValue, lp(top = 6))
+        serverCard.addView(label("WireGuard • защищённый туннель", 12f, TEXT_MUTED).apply { gravity = Gravity.START }, lp(top = 5))
+        root.addView(serverCard, lp())
+
+        val statsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        val rxCard = statCard("ПОЛУЧЕНО")
+        rxValue = rxCard.second
+        statsRow.addView(rxCard.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        statsRow.addView(Space(this), LinearLayout.LayoutParams(dp(10), 1))
+
+        val txCard = statCard("ОТПРАВЛЕНО")
+        txValue = txCard.second
+        statsRow.addView(txCard.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        root.addView(statsRow, lp(top = 12))
+
+        importButton = secondaryButton("Профиль VPN") {
             startActivityForResult(
                 Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -122,39 +177,78 @@ class MainActivity : Activity() {
                 REQ_CONFIG
             )
         }
-        root.addView(importButton, lp(top = 22))
+        root.addView(importButton, lp(top = 18))
 
         settingsButton = secondaryButton("Always-on / Kill Switch") {
             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
         }
         root.addView(settingsButton, lp(top = 10))
 
-        forgetButton = secondaryButton("Удалить конфигурацию") {
+        forgetButton = textButton("Удалить профиль") {
             controller.forgetConfig()
         }.apply {
             visibility = View.GONE
         }
-        root.addView(forgetButton, lp(top = 10))
+        root.addView(forgetButton, lp(top = 6))
 
-        message = label("", 14f, ERROR, true).apply {
-            background = roundedDrawable(ERROR_BG, ERROR_BORDER, dp(18).toFloat())
+        message = label("", 13f, ERROR, true).apply {
+            background = roundedDrawable(ERROR_BG, ERROR_BORDER, dp(16).toFloat())
             setPadding(dp(14), dp(12), dp(14), dp(12))
             visibility = View.GONE
         }
-        root.addView(message, lp(top = 18))
+        root.addView(message, lp(top = 14))
 
-        return root
+        root.addView(label("Nivora 0.4.0", 11f, TEXT_SOFT), lp(top = 22))
+
+        return scroll
+    }
+
+    private fun statCard(title: String): Pair<LinearLayout, TextView> {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(14), dp(12), dp(14))
+            background = roundedDrawable(CARD, BORDER, dp(16).toFloat())
+        }
+        val titleView = TextView(this).apply {
+            text = title
+            textSize = 10f
+            setTextColor(TEXT_SOFT)
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        val valueView = TextView(this).apply {
+            text = "0 B"
+            textSize = 17f
+            setTextColor(TEXT_DARK)
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        card.addView(titleView)
+        card.addView(valueView, lp(top = 6))
+        return card to valueView
     }
 
     private fun secondaryButton(title: String, action: () -> Unit): Button =
         Button(this).apply {
             text = title
-            textSize = 16f
+            textSize = 15f
             setTextColor(TEXT_DARK)
             isAllCaps = false
             stateListAnimator = null
-            background = roundedDrawable(CARD, BORDER, dp(18).toFloat())
-            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = roundedDrawable(CARD, BORDER, dp(16).toFloat())
+            setPadding(dp(16), dp(11), dp(16), dp(11))
+            setOnClickListener { action() }
+        }
+
+    private fun textButton(title: String, action: () -> Unit): Button =
+        Button(this).apply {
+            text = title
+            textSize = 13f
+            setTextColor(TEXT_MUTED)
+            isAllCaps = false
+            stateListAnimator = null
+            background = roundedDrawable(BG, BG, dp(12).toFloat())
             setOnClickListener { action() }
         }
 
@@ -189,41 +283,55 @@ class MainActivity : Activity() {
 
     private fun render(state: VpnController.UiState) {
         val connected = state.connectionStatus == VpnController.ConnectionStatus.CONNECTED
+        val disconnected = state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED
 
         status.text = when (state.connectionStatus) {
-            VpnController.ConnectionStatus.DISCONNECTED -> "Отключено"
+            VpnController.ConnectionStatus.DISCONNECTED -> "VPN отключён"
             VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
-            VpnController.ConnectionStatus.CONNECTED -> "Подключено"
+            VpnController.ConnectionStatus.CONNECTED -> "Соединение защищено"
             VpnController.ConnectionStatus.DISCONNECTING -> "Отключение…"
         }
-        status.setTextColor(if (connected) SUCCESS else TEXT_MUTED)
+        status.setTextColor(if (connected) SUCCESS else TEXT_DARK)
 
-        endpoint.text = state.endpoint.ifBlank {
-            if (state.configured) "Сервер из конфигурации" else "Конфигурация не загружена"
+        statusHint.text = when {
+            connected -> "Весь IPv4-трафик направляется через VPN"
+            !state.configured -> "Импортируйте профиль WireGuard для подключения"
+            else -> "Нажмите кнопку, чтобы включить защиту"
+        }
+
+        serverValue.text = state.endpoint.ifBlank {
+            if (state.configured) "Профиль WireGuard" else "Профиль не выбран"
         }
 
         connectButton.isEnabled =
-            state.configured &&
-                (state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED ||
-                    state.connectionStatus == VpnController.ConnectionStatus.CONNECTED)
+            state.configured && (disconnected || connected)
 
-        connectButton.text = if (connected) "ВЫКЛЮЧИТЬ VPN" else "ВКЛЮЧИТЬ VPN"
-        connectButton.background = when {
-            !connectButton.isEnabled -> roundedDrawable(DISABLED, DISABLED_BORDER, dp(18).toFloat())
-            connected -> roundedDrawable(PRIMARY_DARK, PRIMARY, dp(18).toFloat())
-            else -> roundedDrawable(PRIMARY, PRIMARY_BORDER, dp(18).toFloat())
+        connectButton.text = when (state.connectionStatus) {
+            VpnController.ConnectionStatus.CONNECTED -> "⏻\nОТКЛЮЧИТЬ"
+            VpnController.ConnectionStatus.CONNECTING -> "…\nПОДКЛЮЧЕНИЕ"
+            VpnController.ConnectionStatus.DISCONNECTING -> "…\nОТКЛЮЧЕНИЕ"
+            VpnController.ConnectionStatus.DISCONNECTED -> "⏻\nПОДКЛЮЧИТЬ"
         }
 
-        importButton.isEnabled =
-            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED
+        connectButton.background = when {
+            !connectButton.isEnabled -> circleDrawable(DISABLED, DISABLED)
+            connected -> circleDrawable(PRIMARY_DARK, PRIMARY_DARK)
+            else -> circleDrawable(PRIMARY, PRIMARY)
+        }
+
+        powerRing.background = when {
+            connected -> circleDrawable(RING_CONNECTED, RING_CONNECTED)
+            !state.configured -> circleDrawable(RING_DISABLED, RING_DISABLED)
+            else -> circleDrawable(RING_IDLE, RING_IDLE)
+        }
+
+        importButton.isEnabled = disconnected
 
         forgetButton.visibility =
-            if (state.configured &&
-                state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED)
-                View.VISIBLE
-            else View.GONE
+            if (state.configured && disconnected) View.VISIBLE else View.GONE
 
-        traffic.text = "↓ " + formatBytes(state.rxBytes) + "      ↑ " + formatBytes(state.txBytes)
+        rxValue.text = formatBytes(state.rxBytes)
+        txValue.text = formatBytes(state.txBytes)
 
         val msg = state.message.orEmpty()
         message.text = msg
@@ -234,7 +342,7 @@ class MainActivity : Activity() {
         GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(fill)
-            setStroke(dp(4), stroke)
+            setStroke(dp(1), stroke)
         }
 
     private fun roundedDrawable(fill: Int, stroke: Int, radius: Float): GradientDrawable =
@@ -273,19 +381,20 @@ class MainActivity : Activity() {
         private const val REQ_CONFIG = 1002
 
         private val BG = Color.rgb(239, 243, 246)
-        private val CARD = Color.rgb(248, 250, 251)
+        private val CARD = Color.rgb(250, 252, 253)
         private val PRIMARY = Color.rgb(46, 98, 138)
         private val PRIMARY_DARK = Color.rgb(35, 78, 112)
-        private val PRIMARY_BORDER = Color.rgb(92, 137, 170)
         private val BORDER = Color.rgb(199, 211, 219)
         private val TEXT_DARK = Color.rgb(48, 73, 91)
         private val TEXT_MUTED = Color.rgb(105, 124, 138)
         private val TEXT_SOFT = Color.rgb(148, 162, 172)
         private val SUCCESS = Color.rgb(45, 125, 104)
+        private val RING_IDLE = Color.rgb(213, 228, 239)
+        private val RING_CONNECTED = Color.rgb(205, 232, 222)
+        private val RING_DISABLED = Color.rgb(226, 232, 236)
         private val ERROR = Color.rgb(181, 56, 56)
         private val ERROR_BG = Color.rgb(255, 240, 240)
         private val ERROR_BORDER = Color.rgb(245, 190, 190)
-        private val DISABLED = Color.rgb(218, 225, 230)
-        private val DISABLED_BORDER = Color.rgb(229, 234, 238)
+        private val DISABLED = Color.rgb(192, 205, 214)
     }
 }
