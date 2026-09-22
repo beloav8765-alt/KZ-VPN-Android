@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:name=".KzVpnApp"
+        android:name="com.kzvpn.app.KzVpnApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_vpn"
         android:label="KZ VPN"
@@ -11,7 +11,7 @@
         android:theme="@style/Theme.KzVpn"
         android:usesCleartextTraffic="false">
         <activity
-            android:name=".MainActivity"
+            android:name="com.kzvpn.app.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
