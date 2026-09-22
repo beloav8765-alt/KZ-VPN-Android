@@ -1,4 +1,4 @@
-name: Build Nivora APK
+name: Build Eneida APK
 
 on:
   push:
@@ -37,18 +37,24 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
 
+      - name: Check Eneida control plane syntax
+        shell: bash
+        run: python -m py_compile control-plane/app/main.py
+
       - name: Build APK
         shell: bash
+        env:
+          ENEIDA_API_BASE_URL: ${{ vars.ENEIDA_API_BASE_URL }}
         run: gradle --no-daemon --console=plain :app:assembleDebug
 
       - name: Rename APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Nivora-0.6.0-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Eneida-0.7.0-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Nivora-0.6.0-debug
-          path: Nivora-0.6.0-debug.apk
+          name: Eneida-0.7.0-debug
+          path: Eneida-0.7.0-debug.apk
           if-no-files-found: error
           retention-days: 14
