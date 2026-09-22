@@ -5,11 +5,14 @@
         android:name="com.kzvpn.app.KzVpnApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_vpn"
-        android:label="Nivora"
+        android:label="Eneida"
         android:roundIcon="@drawable/ic_vpn"
         android:supportsRtl="true"
         android:theme="@style/Theme.KzVpn"
         android:usesCleartextTraffic="false">
+        <activity
+            android:name="com.kzvpn.app.PaymentActivity"
+            android:exported="false" />
         <activity
             android:name="com.kzvpn.app.ServersActivity"
             android:exported="false" />
