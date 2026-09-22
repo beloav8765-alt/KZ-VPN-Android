@@ -33,9 +33,12 @@ class MainActivity : Activity() {
 
     private lateinit var status: TextView
     private lateinit var statusHint: TextView
+    private lateinit var sessionText: TextView
     private lateinit var serverValue: TextView
     private lateinit var rxValue: TextView
     private lateinit var txValue: TextView
+    private lateinit var rxRateValue: TextView
+    private lateinit var txRateValue: TextView
     private lateinit var message: TextView
     private lateinit var connectButton: Button
     private lateinit var powerRing: FrameLayout
@@ -98,7 +101,12 @@ class MainActivity : Activity() {
         statusHint.setPadding(dp(10), 0, dp(10), 0)
         root.addView(statusHint, lp(top = 8))
 
-        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(26)))
+        sessionText = label("Сеанс 00:00:00", 12f, TEXT_SOFT, true).apply {
+            visibility = View.GONE
+        }
+        root.addView(sessionText, lp(top = 8))
+
+        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(22)))
 
         powerRing = FrameLayout(this).apply {
             background = circleDrawable(RING_IDLE, RING_IDLE)
@@ -160,12 +168,14 @@ class MainActivity : Activity() {
 
         val rxCard = statCard("ПОЛУЧЕНО")
         rxValue = rxCard.second
+        rxRateValue = rxCard.third
         statsRow.addView(rxCard.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         statsRow.addView(Space(this), LinearLayout.LayoutParams(dp(10), 1))
 
         val txCard = statCard("ОТПРАВЛЕНО")
         txValue = txCard.second
+        txRateValue = txCard.third
         statsRow.addView(txCard.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         root.addView(statsRow, lp(top = 12))
@@ -200,12 +210,12 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Nivora 0.4.2", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Nivora 0.5.0", 11f, TEXT_SOFT), lp(top = 22))
 
         return scroll
     }
 
-    private fun statCard(title: String): Pair<LinearLayout, TextView> {
+    private fun statCard(title: String): Triple<LinearLayout, TextView, TextView> {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -226,9 +236,16 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
         }
+        val rateView = TextView(this).apply {
+            text = "0 B/с"
+            textSize = 11f
+            setTextColor(TEXT_MUTED)
+            gravity = Gravity.CENTER
+        }
         card.addView(titleView)
         card.addView(valueView, lp(top = 6))
-        return card to valueView
+        card.addView(rateView, lp(top = 4))
+        return Triple(card, valueView, rateView)
     }
 
     private fun secondaryButton(title: String, action: () -> Unit): Button =
@@ -333,6 +350,10 @@ class MainActivity : Activity() {
 
         rxValue.text = formatBytes(state.rxBytes)
         txValue.text = formatBytes(state.txBytes)
+        rxRateValue.text = formatRate(state.rxRate)
+        txRateValue.text = formatRate(state.txRate)
+        sessionText.visibility = if (connected) View.VISIBLE else View.GONE
+        sessionText.text = "Сеанс " + formatDuration(state.sessionSeconds)
 
         val msg = state.message.orEmpty()
         message.text = msg
@@ -364,6 +385,16 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
+
+    private fun formatRate(bytesPerSecond: Long): String =
+        formatBytes(bytesPerSecond) + "/с"
+
+    private fun formatDuration(secondsTotal: Long): String {
+        val hours = secondsTotal / 3600
+        val minutes = (secondsTotal % 3600) / 60
+        val seconds = secondsTotal % 60
+        return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    }
 
     private fun formatBytes(bytes: Long): String {
         if (bytes < 1024) return bytes.toString() + " B"

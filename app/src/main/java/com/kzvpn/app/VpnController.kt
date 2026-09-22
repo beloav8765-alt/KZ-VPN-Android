@@ -34,6 +34,9 @@ class VpnController(context: Context) {
         val endpoint: String = "",
         val rxBytes: Long = 0,
         val txBytes: Long = 0,
+        val rxRate: Long = 0,
+        val txRate: Long = 0,
+        val sessionSeconds: Long = 0,
         val message: String? = null
     )
 
@@ -43,6 +46,7 @@ class VpnController(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var config: Config? = null
     private var statsJob: Job? = null
+    private var connectedAtMs: Long = 0L
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -53,7 +57,16 @@ class VpnController(context: Context) {
         override fun onStateChange(newState: Tunnel.State) {
             when (newState) {
                 Tunnel.State.UP -> {
-                    _state.update { it.copy(connectionStatus = ConnectionStatus.CONNECTED, message = null) }
+                    connectedAtMs = System.currentTimeMillis()
+                    _state.update {
+                        it.copy(
+                            connectionStatus = ConnectionStatus.CONNECTED,
+                            rxRate = 0,
+                            txRate = 0,
+                            sessionSeconds = 0,
+                            message = null
+                        )
+                    }
                     startStatsPolling()
                 }
                 Tunnel.State.DOWN -> {
@@ -62,7 +75,10 @@ class VpnController(context: Context) {
                         it.copy(
                             connectionStatus = ConnectionStatus.DISCONNECTED,
                             rxBytes = 0,
-                            txBytes = 0
+                            txBytes = 0,
+                            rxRate = 0,
+                            txRate = 0,
+                            sessionSeconds = 0
                         )
                     }
                 }
@@ -250,13 +266,29 @@ class VpnController(context: Context) {
     private fun startStatsPolling() {
         statsJob?.cancel()
         statsJob = scope.launch {
+            var previousRx = 0L
+            var previousTx = 0L
+            var initialized = false
             while (isActive) {
                 runCatching { backend.getStatistics(tunnel) }
                     .onSuccess { stats ->
+                        val rx = stats.totalRx()
+                        val tx = stats.totalTx()
+                        val rxRate = if (initialized) (rx - previousRx).coerceAtLeast(0L) else 0L
+                        val txRate = if (initialized) (tx - previousTx).coerceAtLeast(0L) else 0L
+                        previousRx = rx
+                        previousTx = tx
+                        initialized = true
+                        val seconds = if (connectedAtMs > 0L)
+                            ((System.currentTimeMillis() - connectedAtMs) / 1000L).coerceAtLeast(0L)
+                        else 0L
                         _state.update {
                             it.copy(
-                                rxBytes = stats.totalRx(),
-                                txBytes = stats.totalTx()
+                                rxBytes = rx,
+                                txBytes = tx,
+                                rxRate = rxRate,
+                                txRate = txRate,
+                                sessionSeconds = seconds
                             )
                         }
                     }
