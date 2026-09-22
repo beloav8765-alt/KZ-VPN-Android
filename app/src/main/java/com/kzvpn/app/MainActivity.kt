@@ -90,7 +90,7 @@ class MainActivity : Activity() {
                 if (bold) setTypeface(typeface, Typeface.BOLD)
             }
 
-        root.addView(label("Nivora", 31f, TEXT_DARK, true), lp())
+        root.addView(label("Eneida", 31f, TEXT_DARK, true), lp())
         root.addView(label("Личный VPN", 14f, TEXT_MUTED), lp(top = 5))
 
         status = label("VPN отключён", 23f, TEXT_DARK, true)
@@ -184,6 +184,11 @@ class MainActivity : Activity() {
         serversButton = secondaryButton("Серверы") { openServers() }
         root.addView(serversButton, lp(top = 18))
 
+        val paymentButton = secondaryButton("Подписка и оплата") {
+            startActivity(Intent(this, PaymentActivity::class.java))
+        }
+        root.addView(paymentButton, lp(top = 10))
+
         val settingsButton = secondaryButton("Постоянная защита") {
             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
         }
@@ -196,7 +201,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Nivora 0.6.0", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Eneida 0.7.0", 11f, TEXT_SOFT), lp(top = 22))
         return scroll
     }
 
