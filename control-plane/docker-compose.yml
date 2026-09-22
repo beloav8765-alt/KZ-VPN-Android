@@ -1,14 +1,22 @@
 services:
-  nivora-control:
+  eneida-control:
     build: .
     restart: unless-stopped
     environment:
-      NIVORA_ADMIN_TOKEN: ${NIVORA_ADMIN_TOKEN}
-      NIVORA_DB: /data/nivora.db
+      ENEIDA_ADMIN_TOKEN: ${ENEIDA_ADMIN_TOKEN}
+      ENEIDA_DB: /data/eneida.db
+      ENEIDA_PLAN_PRICE_RUB: ${ENEIDA_PLAN_PRICE_RUB:-399}
+      ENEIDA_PLAN_DAYS: ${ENEIDA_PLAN_DAYS:-30}
+      ENEIDA_PAYMENT_TTL_MINUTES: ${ENEIDA_PAYMENT_TTL_MINUTES:-30}
+      ENEIDA_MONERO_CONFIRMATIONS: ${ENEIDA_MONERO_CONFIRMATIONS:-1}
+      ENEIDA_MONERO_RPC_URL: ${ENEIDA_MONERO_RPC_URL}
+      ENEIDA_MONERO_RPC_USER: ${ENEIDA_MONERO_RPC_USER:-}
+      ENEIDA_MONERO_RPC_PASSWORD: ${ENEIDA_MONERO_RPC_PASSWORD:-}
+      ENEIDA_XMR_RUB_RATE: ${ENEIDA_XMR_RUB_RATE:-}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - nivora_data:/data
+      - eneida_data:/data
 
 volumes:
-  nivora_data:
+  eneida_data:
