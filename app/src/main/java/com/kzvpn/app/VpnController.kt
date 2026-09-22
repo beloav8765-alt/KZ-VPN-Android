@@ -4,6 +4,7 @@ import android.content.Context
 import com.wireguard.android.backend.GoBackend
 import com.wireguard.android.backend.Tunnel
 import com.wireguard.config.Config
+import com.wireguard.config.BadConfigException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -171,6 +172,24 @@ class VpnController(context: Context) {
     }
 
     private fun describeError(error: Throwable): String {
+        if (error is BadConfigException) {
+            val section = error.section?.name ?: "?"
+            val location = error.location?.name ?: "?"
+            val reason = error.reason?.name ?: "?"
+            val text = error.text?.toString()?.trim().orEmpty()
+            return buildString {
+                append("BadConfigException: ")
+                append(section)
+                append(" / ")
+                append(location)
+                append(" / ")
+                append(reason)
+                if (text.isNotBlank()) {
+                    append(" / ")
+                    append(text.take(120))
+                }
+            }
+        }
         val name = error.javaClass.simpleName.ifBlank { "Ошибка" }
         val message = error.message?.trim().orEmpty()
         return if (message.isBlank()) name else "$name: $message"
