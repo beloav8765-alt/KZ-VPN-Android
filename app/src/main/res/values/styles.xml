@@ -3,11 +3,11 @@
     <style name="Theme.KzVpn" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:statusBarColor">#EBF6FF</item>
-        <item name="android:navigationBarColor">#EBF6FF</item>
+        <item name="android:statusBarColor">#EFF3F6</item>
+        <item name="android:navigationBarColor">#EFF3F6</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:colorAccent">#4EA1EB</item>
-        <item name="android:windowBackground">#EBF6FF</item>
+        <item name="android:colorAccent">#2E628A</item>
+        <item name="android:windowBackground">#EFF3F6</item>
     </style>
 </resources>
