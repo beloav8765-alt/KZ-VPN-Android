@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val eneidaApiBaseUrl = System.getenv("ENEIDA_API_BASE_URL") ?: ""
+
 android {
     namespace = "com.kzvpn.app"
     compileSdk = 36
@@ -11,8 +13,9 @@ android {
         applicationId = "com.kzvpn.app.v032"
         minSdk = 26
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.6.0"
+        versionCode = 15
+        versionName = "0.7.0"
+        buildConfigField("String", "CONTROL_API_BASE_URL", "\"" + eneidaApiBaseUrl.replace("\"", "\\\"") + "\"")
     }
 
     buildFeatures {
@@ -41,5 +44,6 @@ android {
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.wireguard.android:tunnel:1.0.20260102")
+    implementation("com.google.zxing:core:3.5.3")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }
