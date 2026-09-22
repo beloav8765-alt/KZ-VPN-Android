@@ -5,7 +5,7 @@
         android:name="com.kzvpn.app.KzVpnApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_vpn"
-        android:label="LNK Connect"
+        android:label="Nivora"
         android:roundIcon="@drawable/ic_vpn"
         android:supportsRtl="true"
         android:theme="@style/Theme.KzVpn"
