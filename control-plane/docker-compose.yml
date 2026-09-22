@@ -1,0 +1,14 @@
+services:
+  nivora-control:
+    build: .
+    restart: unless-stopped
+    environment:
+      NIVORA_ADMIN_TOKEN: ${NIVORA_ADMIN_TOKEN}
+      NIVORA_DB: /data/nivora.db
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - nivora_data:/data
+
+volumes:
+  nivora_data:

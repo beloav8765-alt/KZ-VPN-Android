@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nivora Admin</title>
+<style>
+:root{--bg:#eff3f6;--card:#fafcfd;--text:#30495b;--muted:#697c8a;--line:#c7d3db;--blue:#2e628a;--green:#2d7d68;--red:#b53838}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text)}
+.wrap{max-width:1100px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+h1{margin:0;font-size:30px}.sub,.meta,.msg{color:var(--muted)}.auth{display:flex;gap:8px;min-width:320px}
+input,button{font:inherit;border-radius:12px;border:1px solid var(--line);padding:11px 13px}input{background:white;width:100%}
+button{cursor:pointer;background:white;color:var(--text)}.primary{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:700}.danger{color:var(--red)}
+.form,.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}.form{margin-top:18px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;margin-top:22px}.row{display:flex;justify-content:space-between;gap:12px}
+.name{font-size:19px;font-weight:800}.meta{font-size:13px;margin-top:5px}.badge{font-size:11px;font-weight:800}.ok{color:var(--green)}.off{color:var(--muted)}.warn{color:#9b6a16}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}
+.stat b{display:block;font-size:18px}.stat span{font-size:11px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.msg{margin-top:12px;min-height:20px}
+@media(max-width:600px){.wrap{padding:16px}.auth{min-width:100%}}
+</style>
+</head>
+<body><div class="wrap">
+<div class="top"><div><h1>Nivora Admin</h1><div class="sub">Управление VPN-серверами</div></div>
+<div class="auth"><input id="token" type="password" placeholder="Admin token"><button class="primary" onclick="saveToken()">Войти</button></div></div>
+
+<div class="form"><b>Добавить сервер</b><div class="form-grid">
+<input id="name" placeholder="Название"><input id="region" placeholder="Регион"><input id="host" placeholder="IP или домен">
+<input id="port" type="number" value="51820" placeholder="Порт"><input id="pub" placeholder="Публичный ключ WireGuard">
+<input id="priority" type="number" value="100" placeholder="Приоритет"></div>
+<div class="actions"><button class="primary" onclick="addServer()">Добавить сервер</button><button onclick="loadServers()">Обновить</button></div></div>
+
+<div id="grid" class="grid"></div><div id="msg" class="msg"></div>
+</div>
+<script>
+var $=function(id){return document.getElementById(id)};$('token').value=sessionStorage.getItem('nivora_admin_token')||'';
+function saveToken(){sessionStorage.setItem('nivora_admin_token',$('token').value.trim());loadServers()}
+function token(){return sessionStorage.getItem('nivora_admin_token')||$('token').value.trim()}
+function headers(){return {'Content-Type':'application/json','Authorization':'Bearer '+token()}}
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(s){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s]})}
+function msg(t){$('msg').textContent=t}
+async function api(url,opts){opts=opts||{};opts.headers=Object.assign({},headers(),opts.headers||{});var r=await fetch(url,opts);if(!r.ok){var d=await r.json().catch(function(){return {}});throw new Error(d.detail||('HTTP '+r.status))}return r.json()}
+async function loadServers(){try{var d=await api('/api/v1/admin/servers');$('grid').innerHTML=d.servers.map(function(s){
+var state=s.maintenance?'ОБСЛУЖИВАНИЕ':(s.enabled?'РАБОТАЕТ':'ОТКЛЮЧЁН');var cls=s.maintenance?'warn':(s.enabled?'ok':'off');
+return '<div class="card"><div class="row"><div><div class="name">'+esc(s.name)+'</div><div class="meta">'+esc(s.region)+' • '+esc(s.endpoint_host)+':'+s.endpoint_port+'</div></div><div class="badge '+cls+'">'+state+'</div></div><div class="stats"><div class="stat"><b>'+s.load_pct+'%</b><span>Нагрузка</span></div><div class="stat"><b>'+s.active_clients+'</b><span>Клиенты</span></div></div><div class="meta">Последний статус: '+esc(s.last_seen||'нет данных')+'</div><div class="actions"><button onclick="toggleServer('+s.id+','+(!s.enabled)+')">'+(s.enabled?'Отключить':'Включить')+'</button><button onclick="maintenance('+s.id+','+(!s.maintenance)+')">'+(s.maintenance?'Вернуть в работу':'Обслуживание')+'</button><button class="danger" onclick="removeServer('+s.id+')">Удалить</button></div></div>'}).join('');msg('Серверов: '+d.servers.length)}catch(e){msg('Ошибка: '+e.message)}}
+async function addServer(){try{await api('/api/v1/admin/servers',{method:'POST',body:JSON.stringify({name:$('name').value.trim(),region:$('region').value.trim(),endpoint_host:$('host').value.trim(),endpoint_port:Number($('port').value||51820),public_key:$('pub').value.trim(),priority:Number($('priority').value||100),enabled:true,maintenance:false})});$('name').value='';$('region').value='';$('host').value='';$('pub').value='';await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
+async function toggleServer(id,enabled){try{await api('/api/v1/admin/servers/'+id,{method:'PATCH',body:JSON.stringify({enabled:enabled})});await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
+async function maintenance(id,value){try{await api('/api/v1/admin/servers/'+id,{method:'PATCH',body:JSON.stringify({maintenance:value})});await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
+async function removeServer(id){if(!confirm('Удалить сервер?'))return;try{await api('/api/v1/admin/servers/'+id,{method:'DELETE'});await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
+if(token())loadServers();
+</script></body></html>
