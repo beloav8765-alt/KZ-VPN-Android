@@ -3,13 +3,17 @@ package com.kzvpn.app
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.VpnService
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.Space
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +35,7 @@ class MainActivity : Activity() {
     private lateinit var message: TextView
     private lateinit var connectButton: Button
     private lateinit var importButton: Button
+    private lateinit var settingsButton: Button
     private lateinit var forgetButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,32 +56,43 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22), dp(26), dp(22), dp(22))
-            setBackgroundColor(Color.rgb(10, 13, 18))
+            setPadding(dp(24), dp(22), dp(24), dp(22))
+            setBackgroundColor(BG)
         }
 
-        fun makeText(value: String, size: Float, color: Int = Color.WHITE): TextView =
+        fun label(value: String, size: Float, color: Int, bold: Boolean = false): TextView =
             TextView(this).apply {
                 text = value
                 textSize = size
                 setTextColor(color)
                 gravity = Gravity.CENTER
-                setPadding(0, dp(7), 0, dp(7))
+                if (bold) setTypeface(typeface, Typeface.BOLD)
             }
 
-        root.addView(makeText("KZ VPN", 30f))
-        root.addView(makeText("Личный WireGuard", 15f, Color.rgb(184, 194, 204)))
-        root.addView(makeText("Версия 0.3.3 • GitHub build", 12f, Color.rgb(130, 140, 150)))
+        root.addView(label("KZ VPN", 34f, TEXT_DARK, true), lp())
+        root.addView(label("Личный WireGuard", 17f, TEXT_MUTED), lp(top = 4))
+        root.addView(label("Версия 0.3.4 • GitHub build", 12f, TEXT_SOFT), lp(top = 4))
 
-        status = makeText("Отключено", 20f, Color.rgb(184, 194, 204))
-        root.addView(status, lp())
+        status = label("Отключено", 26f, TEXT_MUTED, true)
+        root.addView(status, lp(top = 28))
 
-        endpoint = makeText("Конфигурация не загружена", 15f, Color.rgb(184, 194, 204))
-        root.addView(endpoint, lp())
+        endpoint = label("Конфигурация не загружена", 15f, TEXT_MUTED)
+        root.addView(endpoint, lp(top = 8))
+
+        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(26)))
 
         connectButton = Button(this).apply {
-            text = "ПОДКЛЮЧИТЬ VPN"
+            text = "ВКЛЮЧИТЬ\nVPN"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            isAllCaps = false
+            setTypeface(typeface, Typeface.BOLD)
+            stateListAnimator = null
             isEnabled = false
+            background = circleDrawable(PRIMARY, PRIMARY_BORDER)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            elevation = dp(8).toFloat()
             setOnClickListener {
                 when (controller.state.value.connectionStatus) {
                     VpnController.ConnectionStatus.DISCONNECTED -> requestVpn()
@@ -85,43 +101,62 @@ class MainActivity : Activity() {
                 }
             }
         }
-        root.addView(connectButton, lp(top = 20))
-
-        traffic = makeText("↓ 0 B     ↑ 0 B", 16f, Color.rgb(184, 194, 204))
-        root.addView(traffic, lp(top = 8))
-
-        importButton = Button(this).apply {
-            text = "Импортировать WireGuard .conf"
-            setOnClickListener {
-                startActivityForResult(
-                    Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "*/*"
-                    },
-                    REQ_CONFIG
-                )
+        root.addView(
+            connectButton,
+            LinearLayout.LayoutParams(dp(220), dp(220)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
             }
-        }
-        root.addView(importButton, lp(top = 18))
+        )
 
-        val vpnSettings = Button(this).apply {
-            text = "Always-on / Kill Switch"
-            setOnClickListener { startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) }
-        }
-        root.addView(vpnSettings, lp(top = 8))
+        traffic = label("↓ 0 B      ↑ 0 B", 17f, TEXT_DARK, true)
+        traffic.background = roundedDrawable(CARD, BORDER, dp(22).toFloat())
+        traffic.setPadding(dp(18), dp(14), dp(18), dp(14))
+        root.addView(traffic, lp(top = 24))
 
-        forgetButton = Button(this).apply {
-            text = "Удалить конфигурацию"
-            visibility = Button.GONE
-            setOnClickListener { controller.forgetConfig() }
+        importButton = secondaryButton("Импортировать WireGuard .conf") {
+            startActivityForResult(
+                Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                },
+                REQ_CONFIG
+            )
         }
-        root.addView(forgetButton, lp(top = 8))
+        root.addView(importButton, lp(top = 22))
 
-        message = makeText("", 14f, Color.rgb(255, 114, 114))
-        root.addView(message, lp(top = 12))
+        settingsButton = secondaryButton("Always-on / Kill Switch") {
+            startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
+        }
+        root.addView(settingsButton, lp(top = 10))
+
+        forgetButton = secondaryButton("Удалить конфигурацию") {
+            controller.forgetConfig()
+        }.apply {
+            visibility = View.GONE
+        }
+        root.addView(forgetButton, lp(top = 10))
+
+        message = label("", 14f, ERROR, true).apply {
+            background = roundedDrawable(ERROR_BG, ERROR_BORDER, dp(18).toFloat())
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            visibility = View.GONE
+        }
+        root.addView(message, lp(top = 18))
 
         return root
     }
+
+    private fun secondaryButton(title: String, action: () -> Unit): Button =
+        Button(this).apply {
+            text = title
+            textSize = 16f
+            setTextColor(TEXT_DARK)
+            isAllCaps = false
+            stateListAnimator = null
+            background = roundedDrawable(CARD, BORDER, dp(18).toFloat())
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            setOnClickListener { action() }
+        }
 
     private fun requestVpn() {
         val intent = VpnService.prepare(this)
@@ -153,18 +188,15 @@ class MainActivity : Activity() {
     }
 
     private fun render(state: VpnController.UiState) {
+        val connected = state.connectionStatus == VpnController.ConnectionStatus.CONNECTED
+
         status.text = when (state.connectionStatus) {
             VpnController.ConnectionStatus.DISCONNECTED -> "Отключено"
             VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
             VpnController.ConnectionStatus.CONNECTED -> "Подключено • Казахстан"
             VpnController.ConnectionStatus.DISCONNECTING -> "Отключение…"
         }
-
-        status.setTextColor(
-            if (state.connectionStatus == VpnController.ConnectionStatus.CONNECTED)
-                Color.rgb(84, 214, 140)
-            else Color.rgb(184, 194, 204)
-        )
+        status.setTextColor(if (connected) SUCCESS else TEXT_MUTED)
 
         endpoint.text = state.endpoint.ifBlank {
             if (state.configured) "Сервер из конфигурации" else "Конфигурация не загружена"
@@ -175,10 +207,12 @@ class MainActivity : Activity() {
                 (state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED ||
                     state.connectionStatus == VpnController.ConnectionStatus.CONNECTED)
 
-        connectButton.text =
-            if (state.connectionStatus == VpnController.ConnectionStatus.CONNECTED)
-                "ОТКЛЮЧИТЬ VPN"
-            else "ПОДКЛЮЧИТЬ VPN"
+        connectButton.text = if (connected) "ВЫКЛЮЧИТЬ\nVPN" else "ВКЛЮЧИТЬ\nVPN"
+        connectButton.background = when {
+            !connectButton.isEnabled -> circleDrawable(DISABLED, DISABLED_BORDER)
+            connected -> circleDrawable(PRIMARY_DARK, PRIMARY)
+            else -> circleDrawable(PRIMARY, PRIMARY_BORDER)
+        }
 
         importButton.isEnabled =
             state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED
@@ -186,12 +220,30 @@ class MainActivity : Activity() {
         forgetButton.visibility =
             if (state.configured &&
                 state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED)
-                Button.VISIBLE
-            else Button.GONE
+                View.VISIBLE
+            else View.GONE
 
-        traffic.text = "↓ ${formatBytes(state.rxBytes)}     ↑ ${formatBytes(state.txBytes)}"
-        message.text = state.message.orEmpty()
+        traffic.text = "↓ " + formatBytes(state.rxBytes) + "      ↑ " + formatBytes(state.txBytes)
+
+        val msg = state.message.orEmpty()
+        message.text = msg
+        message.visibility = if (msg.isBlank()) View.GONE else View.VISIBLE
     }
+
+    private fun circleDrawable(fill: Int, stroke: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(fill)
+            setStroke(dp(4), stroke)
+        }
+
+    private fun roundedDrawable(fill: Int, stroke: Int, radius: Float): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(fill)
+            setStroke(dp(1), stroke)
+        }
 
     private fun lp(top: Int = 0): LinearLayout.LayoutParams =
         LinearLayout.LayoutParams(
@@ -205,7 +257,7 @@ class MainActivity : Activity() {
         (value * resources.displayMetrics.density).toInt()
 
     private fun formatBytes(bytes: Long): String {
-        if (bytes < 1024) return "$bytes B"
+        if (bytes < 1024) return bytes.toString() + " B"
         val units = arrayOf("KB", "MB", "GB", "TB")
         var value = bytes.toDouble()
         var index = -1
@@ -219,5 +271,21 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_VPN = 1001
         private const val REQ_CONFIG = 1002
+
+        private val BG = Color.rgb(235, 246, 255)
+        private val CARD = Color.rgb(255, 255, 255)
+        private val PRIMARY = Color.rgb(78, 161, 235)
+        private val PRIMARY_DARK = Color.rgb(43, 118, 190)
+        private val PRIMARY_BORDER = Color.rgb(173, 215, 248)
+        private val BORDER = Color.rgb(190, 220, 244)
+        private val TEXT_DARK = Color.rgb(31, 76, 115)
+        private val TEXT_MUTED = Color.rgb(91, 128, 157)
+        private val TEXT_SOFT = Color.rgb(129, 160, 184)
+        private val SUCCESS = Color.rgb(39, 154, 105)
+        private val ERROR = Color.rgb(181, 56, 56)
+        private val ERROR_BG = Color.rgb(255, 240, 240)
+        private val ERROR_BORDER = Color.rgb(245, 190, 190)
+        private val DISABLED = Color.rgb(188, 211, 228)
+        private val DISABLED_BORDER = Color.rgb(211, 228, 240)
     }
 }
