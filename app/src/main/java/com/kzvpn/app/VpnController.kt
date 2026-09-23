@@ -498,6 +498,7 @@ class VpnController(context: Context) {
 
     companion object {
         private const val TUNNEL_NAME = "eneida"
+        private const val MANAGED_PROFILE_NAME = "Eneida Auto"
         private const val MAX_CONFIG_SIZE = 1_048_576
         private val ENDPOINT_REGEX = Regex("(?im)^\\s*Endpoint\\s*=\\s*(.+)$")
     }
