@@ -2,6 +2,7 @@ package com.kzvpn.app
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -12,8 +13,18 @@ class EneidaApiClient {
         val validUntil: String?
     )
 
+    data class Region(
+        val code: String,
+        val name: String,
+        val flag: String,
+        val servers: Int,
+        val loadPct: Int
+    )
+
     data class Provisioning(
         val serverName: String,
+        val regionCode: String,
+        val regionName: String,
         val endpoint: String,
         val serverPublicKey: String,
         val address: String,
@@ -34,16 +45,41 @@ class EneidaApiClient {
         )
     }
 
+    suspend fun regions(): List<Region> = withContext(Dispatchers.IO) {
+        val json = request("GET", "/api/v1/public/regions", null)
+        val array = json.optJSONArray("regions") ?: JSONArray()
+        buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                add(
+                    Region(
+                        code = item.optString("code"),
+                        name = item.optString("name"),
+                        flag = item.optString("flag"),
+                        servers = item.optInt("servers", 0),
+                        loadPct = item.optInt("load_pct", 0)
+                    )
+                )
+            }
+        }
+    }
+
     suspend fun provision(
-        identity: DeviceIdentityStore.Identity
+        identity: DeviceIdentityStore.Identity,
+        preferredRegion: String? = null
     ): Provisioning = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("device_id", identity.deviceId)
             .put("public_key", identity.publicKey)
+        if (!preferredRegion.isNullOrBlank() && preferredRegion != "auto") {
+            body.put("preferred_region", preferredRegion)
+        }
 
         val json = request("POST", "/api/v1/devices/provision", body.toString())
         Provisioning(
             serverName = json.optString("server_name", "Eneida"),
+            regionCode = json.optString("region_code", "auto"),
+            regionName = json.optString("region_name", "Лучший сервер"),
             endpoint = json.getString("endpoint"),
             serverPublicKey = json.getString("server_public_key"),
             address = json.getString("address"),
