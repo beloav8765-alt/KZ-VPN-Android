@@ -1,40 +1,20 @@
 # Eneida Agent
 
-Eneida Agent runs on every WireGuard VPN node.
+Eneida Agent runs on each WireGuard node and connects **outbound** to Eneida Control over HTTPS.
 
-It never receives or stores the server private key. It controls the already-running WireGuard interface through the local "wg" command and stores only client public keys, device IDs and assigned tunnel addresses.
+It:
+- sends CPU/RAM/load and active-client health;
+- receives the desired WireGuard peer list;
+- applies only peers managed by Eneida;
+- never sends or stores the WireGuard server private key in Eneida Control.
 
-## API
+The raw agent port is no longer exposed to the internet.
 
-All endpoints require:
+Required environment variables:
 
-    Authorization: Bearer <ENEIDA_AGENT_TOKEN>
+    ENEIDA_CONTROL_URL=https://control.example.com
+    ENEIDA_SERVER_ID=1
+    ENEIDA_AGENT_TOKEN=<unique secret>
+    ENEIDA_AGENT_INTERFACE=wg0
 
-Endpoints:
-- GET /health
-- GET /v1/peers
-- POST /v1/peers
-- DELETE /v1/peers/{device_id}
-
-POST /v1/peers body:
-
-    {
-      "device_id": "stable-device-id",
-      "public_key": "wireguard-client-public-key"
-    }
-
-The agent allocates an address from ENEIDA_AGENT_ADDRESS_POOL and applies the peer to wg0.
-
-## Install
-
-    sudo mkdir -p /opt/eneida-agent
-    sudo cp agent.py requirements.txt /opt/eneida-agent/
-    cd /opt/eneida-agent
-    python3 -m venv .venv
-    .venv/bin/pip install -r requirements.txt
-
-Create /etc/eneida-agent.env with a strong unique token. Do not commit it.
-
-Then install the systemd unit and start it.
-
-By default the agent binds only to 127.0.0.1:8091. If the control plane is on another host, expose the agent only through a private network or an authenticated HTTPS reverse proxy. Do not expose the raw agent port publicly.
+The one-click VPS installer in Eneida Admin creates these values automatically.
