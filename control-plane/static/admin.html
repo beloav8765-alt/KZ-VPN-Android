@@ -153,6 +153,8 @@ th{color:var(--muted)}.table-wrap{overflow:auto;margin-top:12px}
 
 <script>
 var $=function(id){return document.getElementById(id)};
+var fleetServers=[];
+var replaceServerId=null;
 $('token').value=sessionStorage.getItem('eneida_admin_token')||'';
 
 function showPage(name){
@@ -195,6 +197,8 @@ function serverCard(s){
     '<div class="actions">'+
       '<button onclick="toggleServer('+s.id+','+(!s.enabled)+')">'+(s.enabled?'Отключить':'Включить')+'</button>'+
       '<button onclick="maintenance('+s.id+','+(!s.maintenance)+')">'+(s.maintenance?'Вернуть в работу':'Обслуживание')+'</button>'+
+      '<button onclick="editServer('+s.id+')">Изменить</button>'+
+      '<button onclick="prepareReplacement('+s.id+')">Заменить</button>'+
       '<button class="danger" onclick="removeServer('+s.id+')">Удалить</button>'+
     '</div></div>';
 }
@@ -213,9 +217,10 @@ async function loadDashboard(){
 }
 async function loadServers(){
   var d=await api('/api/v1/admin/fleet/servers');
-  $('serverCount').textContent='Серверов: '+d.servers.length;
-  $('serverGrid').innerHTML=d.servers.map(serverCard).join('')||'<div class="muted">Серверов пока нет.</div>';
-  $('dashboardServers').innerHTML=d.servers.slice(0,6).map(serverCard).join('')||'<div class="muted">Серверов пока нет.</div>';
+  fleetServers=d.servers||[];
+  $('serverCount').textContent='Серверов: '+fleetServers.length;
+  $('serverGrid').innerHTML=fleetServers.map(serverCard).join('')||'<div class="muted">Серверов пока нет.</div>';
+  $('dashboardServers').innerHTML=fleetServers.slice(0,6).map(serverCard).join('')||'<div class="muted">Серверов пока нет.</div>';
 }
 async function loadPayments(){
   var d=await api('/api/v1/admin/payments');
@@ -253,6 +258,43 @@ async function syncPayments(){
   try{var d=await api('/api/v1/admin/payments/sync',{method:'POST'});setMsg('Проверено платежей: '+d.checked);await Promise.all([loadPayments(),loadDashboard()])}
   catch(e){setMsg('Ошибка: '+e.message)}
 }
+async function editServer(id){
+  var s=fleetServers.find(function(x){return x.id===id}); if(!s)return;
+  var name=prompt('Название сервера',s.name); if(name===null)return;
+  var country=prompt('Страна',s.country||''); if(country===null)return;
+  var city=prompt('Город',s.city||''); if(city===null)return;
+  var region=prompt('Код региона (fr, nl, us...)',s.region_code||''); if(region===null)return;
+  var endpoint=s.endpoint.split(':');
+  var host=prompt('IP / домен',endpoint.slice(0,-1).join(':')); if(host===null)return;
+  var port=prompt('WireGuard порт',endpoint[endpoint.length-1]||'51820'); if(port===null)return;
+  var priority=prompt('Приоритет (меньше = выше)',s.priority||100); if(priority===null)return;
+  try{
+    await api('/api/v1/admin/fleet/servers/'+id,{method:'PATCH',body:JSON.stringify({
+      name:name.trim(),country:country.trim(),city:city.trim(),region_code:region.trim().toLowerCase(),
+      endpoint_host:host.trim(),endpoint_port:Number(port),priority:Number(priority)
+    })});
+    setMsg('Сервер изменён'); await loadAll();
+  }catch(e){setMsg('Ошибка: '+e.message)}
+}
+
+function prepareReplacement(id){
+  var s=fleetServers.find(function(x){return x.id===id}); if(!s)return;
+  replaceServerId=id;
+  showPage('servers');
+  $('vpsName').value=s.name+' NEW';
+  $('vpsCountry').value=s.country||'';
+  $('vpsCity').value=s.city||'';
+  $('vpsRegion').value=s.region_code||'';
+  $('vpsFlag').value=s.flag||'';
+  $('vpsPriority').value=s.priority||100;
+  $('vpsHost').value='';
+  $('vpsPassword').value='';
+  $('vpsKey').value='';
+  $('installButton').textContent='Установить новый и заменить '+s.name;
+  $('installStatus').textContent='После успешной установки новый сервер войдёт в работу, старый будет переведён в обслуживание.';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
 async function provisionVps(){
   var password=$('vpsPassword').value,key=$('vpsKey').value;
   if(!password&&!key){$('installStatus').textContent='Укажите временный SSH пароль или private key.';return}
@@ -263,7 +305,8 @@ async function provisionVps(){
       region_code:$('vpsRegion').value.trim().toLowerCase(),flag:$('vpsFlag').value.trim()||null,
       host:$('vpsHost').value.trim(),ssh_port:Number($('vpsSshPort').value||22),ssh_user:$('vpsSshUser').value.trim()||'root',
       ssh_password:password||null,ssh_private_key:key||null,endpoint_port:Number($('vpsWgPort').value||51820),
-      priority:Number($('vpsPriority').value||100)
+      priority:Number($('vpsPriority').value||100),
+      replace_server_id:replaceServerId
     })});
     $('vpsPassword').value='';$('vpsKey').value='';
     pollInstall(d.job_id);
@@ -273,7 +316,7 @@ async function pollInstall(jobId){
   try{
     var d=await api('/api/v1/admin/provision-jobs/'+jobId);
     $('installStatus').textContent=d.step+(d.error_text?' — '+d.error_text:'');
-    if(d.status==='success'){ $('installButton').disabled=false; await loadAll(); return }
+    if(d.status==='success'){ $('installButton').disabled=false; replaceServerId=null; $('installButton').textContent='Установить и добавить сервер'; await loadAll(); return }
     if(d.status==='error'){ $('installButton').disabled=false; await loadAll(); return }
     setTimeout(function(){pollInstall(jobId)},2000);
   }catch(e){$('installStatus').textContent='Ошибка проверки установки: '+e.message;$('installButton').disabled=false}
