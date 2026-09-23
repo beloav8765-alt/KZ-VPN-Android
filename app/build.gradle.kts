@@ -13,8 +13,8 @@ android {
         applicationId = "com.kzvpn.app.v032"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "0.8.1"
+        versionCode = 18
+        versionName = "0.9.0"
         buildConfigField("String", "CONTROL_API_BASE_URL", "\"" + eneidaApiBaseUrl.replace("\"", "\\\"") + "\"")
     }
 
