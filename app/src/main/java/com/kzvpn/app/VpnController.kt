@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
@@ -137,7 +138,7 @@ class VpnController(context: Context) {
         }.onFailure { error ->
             if (showError) {
                 _state.update {
-                    it.copy(message = "Не удалось загрузить выбранный сервер: \${describeError(error)}")
+                    it.copy(message = "Не удалось загрузить выбранный сервер: ${describeError(error)}")
                 }
             }
         }.getOrNull()
@@ -214,7 +215,7 @@ class VpnController(context: Context) {
                 val endpoint = extractEndpoint(bytes)
                 val currentCount = serverStore.listServers().size
                 val name = cleanServerName(suggestedName)
-                    ?: if (currentCount == 0) "Основной сервер" else "Сервер \${currentCount + 1}"
+                    ?: if (currentCount == 0) "Основной сервер" else "Сервер ${currentCount + 1}"
 
                 val profile = serverStore.addServer(
                     name = name,
@@ -224,12 +225,42 @@ class VpnController(context: Context) {
                 loadServerIntoMemory(profile.id)
 
                 _state.update {
-                    it.copy(message = "Сервер «\${profile.name}» добавлен")
+                    it.copy(message = "Сервер «${profile.name}» добавлен")
                 }
             }.onFailure { error ->
                 _state.update {
-                    it.copy(message = "Ошибка конфигурации: \${describeError(error)}")
+                    it.copy(message = "Ошибка конфигурации: ${describeError(error)}")
                 }
+            }
+        }
+    }
+
+    suspend fun installManagedConfig(
+        bytes: ByteArray,
+        serverName: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(bytes.size <= MAX_CONFIG_SIZE) { "Конфигурация слишком большая" }
+            val normalized = normalizeConfigBytes(bytes)
+            Config.parse(ByteArrayInputStream(normalized))
+            val endpoint = extractEndpoint(normalized)
+
+            serverStore.listServers()
+                .filter { it.name == MANAGED_PROFILE_NAME }
+                .forEach { serverStore.deleteServer(it.id) }
+
+            val profile = serverStore.addServer(
+                name = serverName.ifBlank { MANAGED_PROFILE_NAME },
+                endpoint = endpoint,
+                configBytes = normalized
+            )
+            loadServerIntoMemory(profile.id)
+            _state.update {
+                it.copy(message = "Eneida настроена автоматически")
+            }
+        }.onFailure { error ->
+            _state.update {
+                it.copy(message = "Автонастройка VPN: ${describeError(error)}")
             }
         }
     }
@@ -261,7 +292,7 @@ class VpnController(context: Context) {
                 _state.update {
                     it.copy(
                         connectionStatus = ConnectionStatus.DISCONNECTED,
-                        message = "Не удалось выбрать сервер: \${describeError(error)}"
+                        message = "Не удалось выбрать сервер: ${describeError(error)}"
                     )
                 }
                 return@launch
@@ -461,7 +492,7 @@ class VpnController(context: Context) {
             raw.contains("VPN_NOT_AUTHORIZED", ignoreCase = true) ->
                 "Android не дал разрешение на VPN"
             raw.isNotBlank() -> "VPN: $raw"
-            else -> "VPN: \${error.javaClass.simpleName}"
+            else -> "VPN: ${error.javaClass.simpleName}"
         }
     }
 
