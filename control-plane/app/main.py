@@ -12,6 +12,7 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from .fleet import router as fleet_router, init_fleet_schema
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.getenv("ENEIDA_DB") or os.getenv("NIVORA_DB") or (BASE_DIR / "data" / "eneida.db"))
@@ -32,7 +33,8 @@ XMR_RATE_URL = os.getenv(
     "https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=rub",
 ).strip()
 
-app = FastAPI(title="Eneida Control", version="0.3.0")
+app = FastAPI(title="Eneida Control", version="0.4.0")
+app.include_router(fleet_router)
 payment_task: Optional[asyncio.Task] = None
 
 
@@ -121,6 +123,7 @@ async def on_startup() -> None:
     if not ADMIN_TOKEN:
         raise RuntimeError("ENEIDA_ADMIN_TOKEN is required")
     init_db()
+    init_fleet_schema()
     if MONERO_RPC_URL:
         payment_task = asyncio.create_task(payment_sync_loop())
 
@@ -468,7 +471,7 @@ async def provision_on_agent(server: sqlite3.Row, payload: DeviceProvisionReques
     return data
 
 
-@app.post("/api/v1/devices/provision")
+@app.post("/api/v1/devices/provision-legacy")
 async def provision_device(payload: DeviceProvisionRequest) -> dict:
     if not subscription_is_active(payload.device_id):
         raise HTTPException(status_code=402, detail="Active subscription required")
