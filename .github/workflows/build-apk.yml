@@ -39,7 +39,7 @@ jobs:
 
       - name: Check Eneida control plane syntax
         shell: bash
-        run: python -m py_compile control-plane/app/main.py
+        run: python -m py_compile control-plane/app/main.py control-plane/app/fleet.py
 
       - name: Check Eneida agent syntax
         shell: bash
@@ -53,12 +53,12 @@ jobs:
 
       - name: Rename APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Eneida-0.8.1-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Eneida-0.9.0-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Eneida-0.8.1-debug
-          path: Eneida-0.8.1-debug.apk
+          name: Eneida-0.9.0-debug
+          path: Eneida-0.9.0-debug.apk
           if-no-files-found: error
           retention-days: 14
