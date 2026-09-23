@@ -37,3 +37,17 @@ Never commit:
 - Monero private spend key;
 - WireGuard private keys;
 - RPC passwords.
+
+
+## Automatic provisioning
+
+Eneida 0.8 introduces managed client provisioning. A paid device sends only its stable device ID and WireGuard public key to Eneida Control. Eneida Control chooses an enabled server, calls that server's Eneida Agent, and returns only the public connection parameters required by the app.
+
+The client private WireGuard key is generated on the Android device and is never sent to Eneida Control.
+
+For each VPN server, configure in Eneida Admin:
+- public endpoint and WireGuard public key;
+- Eneida Agent URL;
+- unique Eneida Agent token.
+
+The control plane must reach the agent over a private network or authenticated HTTPS path. Do not expose the raw agent port to the internet.
