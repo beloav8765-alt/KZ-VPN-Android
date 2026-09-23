@@ -25,10 +25,21 @@ button{cursor:pointer;background:white;color:var(--text)}.primary{background:var
 <div class="form"><b>Добавить сервер</b><div class="form-grid">
 <input id="name" placeholder="Название"><input id="region" placeholder="Регион"><input id="host" placeholder="IP или домен">
 <input id="port" type="number" value="51820" placeholder="Порт"><input id="pub" placeholder="Публичный ключ WireGuard">
-<input id="priority" type="number" value="100" placeholder="Приоритет"></div>
+<input id="priority" type="number" value="100" placeholder="Приоритет">
+<input id="agentUrl" placeholder="Agent URL, например http://127.0.0.1:8091">
+<input id="agentToken" type="password" placeholder="Agent token"></div>
 <div class="actions"><button class="primary" onclick="addServer()">Добавить сервер</button><button onclick="loadAll()">Обновить</button></div></div>
 
 <div class="section"><div class="row"><b>VPN-серверы</b><span id="serverCount" class="meta"></span></div><div id="grid" class="grid"></div></div>
+
+<div class="section">
+<div class="row"><b>Подписки</b><span class="meta">Ручное управление для поддержки и тестов</span></div>
+<div class="form-grid">
+<input id="grantDevice" placeholder="Device ID">
+<input id="grantDays" type="number" value="30" placeholder="Дней">
+</div>
+<div class="actions"><button class="primary" onclick="grantSubscription()">Выдать подписку</button></div>
+</div>
 
 <div class="section">
 <div class="row"><b>Оплаты XMR</b><button onclick="syncPayments()">Проверить оплаты</button></div>
@@ -47,13 +58,14 @@ function msg(t){$('msg').textContent=t}
 async function api(url,opts){opts=opts||{};opts.headers=Object.assign({},headers(),opts.headers||{});var r=await fetch(url,opts);if(!r.ok){var d=await r.json().catch(function(){return {}});throw new Error(d.detail||('HTTP '+r.status))}return r.json()}
 async function loadServers(){var d=await api('/api/v1/admin/servers');$('serverCount').textContent='Серверов: '+d.servers.length;$('grid').innerHTML=d.servers.map(function(s){
 var state=s.maintenance?'ОБСЛУЖИВАНИЕ':(s.enabled?'РАБОТАЕТ':'ОТКЛЮЧЁН');var cls=s.maintenance?'warn':(s.enabled?'ok':'off');
-return '<div class="card"><div class="row"><div><div class="name">'+esc(s.name)+'</div><div class="meta">'+esc(s.region)+' • '+esc(s.endpoint_host)+':'+s.endpoint_port+'</div></div><div class="badge '+cls+'">'+state+'</div></div><div class="stats"><div class="stat"><b>'+s.load_pct+'%</b><span>Нагрузка</span></div><div class="stat"><b>'+s.active_clients+'</b><span>Клиенты</span></div></div><div class="actions"><button onclick="toggleServer('+s.id+','+(!s.enabled)+')">'+(s.enabled?'Отключить':'Включить')+'</button><button onclick="maintenance('+s.id+','+(!s.maintenance)+')">'+(s.maintenance?'Вернуть в работу':'Обслуживание')+'</button><button class="danger" onclick="removeServer('+s.id+')">Удалить</button></div></div>'}).join('')}
+return '<div class="card"><div class="row"><div><div class="name">'+esc(s.name)+'</div><div class="meta">'+esc(s.region)+' • '+esc(s.endpoint_host)+':'+s.endpoint_port+'</div><div class="meta">Agent: '+(s.agent_configured?'настроен':'не настроен')+'</div></div><div class="badge '+cls+'">'+state+'</div></div><div class="stats"><div class="stat"><b>'+s.load_pct+'%</b><span>Нагрузка</span></div><div class="stat"><b>'+s.active_clients+'</b><span>Клиенты</span></div></div><div class="actions"><button onclick="toggleServer('+s.id+','+(!s.enabled)+')">'+(s.enabled?'Отключить':'Включить')+'</button><button onclick="maintenance('+s.id+','+(!s.maintenance)+')">'+(s.maintenance?'Вернуть в работу':'Обслуживание')+'</button><button class="danger" onclick="removeServer('+s.id+')">Удалить</button></div></div>'}).join('')}
 async function loadPayments(){var d=await api('/api/v1/admin/payments');$('paymentRows').innerHTML=d.payments.map(function(p){return '<tr><td>'+esc(p.status)+'</td><td>'+esc((p.created_at||'').slice(0,16).replace('T',' '))+'</td><td>'+esc(p.device_id)+'</td><td>'+p.rub_amount+' ₽</td><td>'+esc(p.xmr_amount)+'</td><td>'+p.confirmations+'</td></tr>'}).join('')}
 async function loadAll(){try{await Promise.all([loadServers(),loadPayments()]);msg('Данные обновлены')}catch(e){msg('Ошибка: '+e.message)}}
-async function addServer(){try{await api('/api/v1/admin/servers',{method:'POST',body:JSON.stringify({name:$('name').value.trim(),region:$('region').value.trim(),endpoint_host:$('host').value.trim(),endpoint_port:Number($('port').value||51820),public_key:$('pub').value.trim(),priority:Number($('priority').value||100),enabled:true,maintenance:false})});$('name').value='';$('region').value='';$('host').value='';$('pub').value='';await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
+async function addServer(){try{await api('/api/v1/admin/servers',{method:'POST',body:JSON.stringify({name:$('name').value.trim(),region:$('region').value.trim(),endpoint_host:$('host').value.trim(),endpoint_port:Number($('port').value||51820),public_key:$('pub').value.trim(),priority:Number($('priority').value||100),agent_url:$('agentUrl').value.trim()||null,agent_token:$('agentToken').value.trim()||null,enabled:true,maintenance:false})});$('name').value='';$('region').value='';$('host').value='';$('pub').value='';$('agentUrl').value='';$('agentToken').value='';await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
 async function toggleServer(id,enabled){try{await api('/api/v1/admin/servers/'+id,{method:'PATCH',body:JSON.stringify({enabled:enabled})});await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
 async function maintenance(id,value){try{await api('/api/v1/admin/servers/'+id,{method:'PATCH',body:JSON.stringify({maintenance:value})});await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
 async function removeServer(id){if(!confirm('Удалить сервер?'))return;try{await api('/api/v1/admin/servers/'+id,{method:'DELETE'});await loadServers()}catch(e){msg('Ошибка: '+e.message)}}
 async function syncPayments(){try{var d=await api('/api/v1/admin/payments/sync',{method:'POST'});msg('Проверено платежей: '+d.checked);await loadPayments()}catch(e){msg('Ошибка: '+e.message)}}
+async function grantSubscription(){try{var device=$('grantDevice').value.trim();var days=Number($('grantDays').value||30);if(!device){msg('Введите Device ID');return}var d=await api('/api/v1/admin/subscriptions/'+encodeURIComponent(device)+'/grant',{method:'POST',body:JSON.stringify({days:days})});msg('Подписка активна до '+d.valid_until)}catch(e){msg('Ошибка: '+e.message)}}
 if(token())loadAll();
 </script></body></html>
