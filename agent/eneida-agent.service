@@ -5,9 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/eneida-agent
 EnvironmentFile=/etc/eneida-agent.env
-ExecStart=/opt/eneida-agent/.venv/bin/uvicorn agent:app --host 127.0.0.1 --port 8091
+ExecStart=/opt/eneida-agent/.venv/bin/python /opt/eneida-agent/agent.py
 Restart=always
 RestartSec=3
 
