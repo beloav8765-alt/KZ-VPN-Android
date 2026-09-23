@@ -217,6 +217,20 @@ class VpsProvisionRequest(BaseModel):
     ssh_private_key: Optional[str] = Field(default=None, max_length=16000)
     endpoint_port: int = Field(default=51820, ge=1, le=65535)
     priority: int = Field(default=100, ge=0, le=10000)
+    replace_server_id: Optional[int] = Field(default=None, ge=1)
+
+
+class FleetServerUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    country: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    city: Optional[str] = Field(default=None, max_length=80)
+    region_code: Optional[str] = Field(default=None, min_length=2, max_length=32)
+    flag: Optional[str] = Field(default=None, max_length=16)
+    endpoint_host: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    endpoint_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    priority: Optional[int] = Field(default=None, ge=0, le=10000)
+    enabled: Optional[bool] = None
+    maintenance: Optional[bool] = None
 
 
 @router.get("/api/v1/public/regions")
@@ -446,6 +460,61 @@ def admin_fleet_servers() -> dict:
     }
 
 
+@router.patch("/api/v1/admin/fleet/servers/{server_id}", dependencies=[Depends(require_admin)])
+def update_fleet_server(server_id: int, payload: FleetServerUpdate) -> dict:
+    values = payload.model_dump(exclude_none=True)
+    if not values:
+        raise HTTPException(status_code=400, detail="No changes")
+
+    allowed = {
+        "name", "country", "city", "region_code", "flag",
+        "endpoint_host", "endpoint_port", "priority", "enabled", "maintenance"
+    }
+    updates = []
+    params = []
+    for key, value in values.items():
+        if key not in allowed:
+            continue
+        if key == "region_code" and isinstance(value, str):
+            value = value.strip().lower()
+        if isinstance(value, bool):
+            value = int(value)
+        elif isinstance(value, str):
+            value = value.strip()
+        updates.append(f"{key} = ?")
+        params.append(value)
+
+    if "country" in values:
+        updates.append("region = ?")
+        params.append(values["country"].strip())
+
+    updates.append("updated_at = ?")
+    params.append(now_iso())
+    params.append(server_id)
+
+    with closing(connect_db()) as db:
+        cur = db.execute(
+            f"UPDATE servers SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Server not found")
+        db.commit()
+        row = db.execute("SELECT * FROM servers WHERE id = ?", (server_id,)).fetchone()
+
+    add_event("info", "server", "Параметры сервера изменены", server_id)
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "country": row["country"] or row["region"],
+        "city": row["city"],
+        "region_code": region_code_for(row),
+        "endpoint": f'{row["endpoint_host"]}:{row["endpoint_port"]}',
+        "enabled": bool(row["enabled"]),
+        "maintenance": bool(row["maintenance"]),
+    }
+
+
 @router.get("/api/v1/admin/provision-jobs/{job_id}", dependencies=[Depends(require_admin)])
 def get_provision_job(job_id: str) -> dict:
     with closing(connect_db()) as db:
@@ -571,6 +640,22 @@ async def run_provision_job(job_id: str, server_id: int, payload: VpsProvisionRe
                 WHERE id = ?
             """, (public_key, now_iso(), server_id))
             db.commit()
+
+        if payload.replace_server_id and payload.replace_server_id != server_id:
+            with closing(connect_db()) as db:
+                db.execute("""
+                    UPDATE servers
+                    SET enabled = 0, maintenance = 1, status = 'retired',
+                        updated_at = ?
+                    WHERE id = ?
+                """, (now_iso(), payload.replace_server_id))
+                db.commit()
+            add_event(
+                "info",
+                "replace",
+                f"Сервер заменён новым узлом #{server_id}",
+                payload.replace_server_id,
+            )
 
         update_job(job_id, "success", "Сервер установлен. Ожидаем Agent")
         add_event("info", "provision", "VPN-сервер установлен автоматически", server_id)
