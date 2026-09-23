@@ -21,6 +21,8 @@ PLAN_PRICE_RUB = int(os.getenv("ENEIDA_PLAN_PRICE_RUB", "399"))
 PLAN_DAYS = int(os.getenv("ENEIDA_PLAN_DAYS", "30"))
 PAYMENT_TTL_MINUTES = int(os.getenv("ENEIDA_PAYMENT_TTL_MINUTES", "30"))
 MONERO_CONFIRMATIONS_REQUIRED = int(os.getenv("ENEIDA_MONERO_CONFIRMATIONS", "1"))
+VPN_DNS = os.getenv("ENEIDA_VPN_DNS", "8.8.8.8").strip()
+VPN_MTU = int(os.getenv("ENEIDA_VPN_MTU", "1280"))
 MONERO_RPC_URL = os.getenv("ENEIDA_MONERO_RPC_URL", "").strip()
 MONERO_RPC_USER = os.getenv("ENEIDA_MONERO_RPC_USER", "").strip()
 MONERO_RPC_PASSWORD = os.getenv("ENEIDA_MONERO_RPC_PASSWORD", "").strip()
@@ -30,7 +32,7 @@ XMR_RATE_URL = os.getenv(
     "https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=rub",
 ).strip()
 
-app = FastAPI(title="Eneida Control", version="0.2.0")
+app = FastAPI(title="Eneida Control", version="0.3.0")
 payment_task: Optional[asyncio.Task] = None
 
 
@@ -55,6 +57,12 @@ def connect_db() -> sqlite3.Connection:
     return db
 
 
+def ensure_column(db: sqlite3.Connection, table: str, name: str, definition: str) -> None:
+    columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+    if name not in columns:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
 def init_db() -> None:
     with closing(connect_db()) as db:
         db.execute("""
@@ -75,6 +83,8 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL
             )
         """)
+        ensure_column(db, "servers", "agent_url", "TEXT")
+        ensure_column(db, "servers", "agent_token", "TEXT")
         db.execute("""
             CREATE TABLE IF NOT EXISTS payment_orders (
                 id TEXT PRIMARY KEY,
@@ -135,6 +145,8 @@ class ServerCreate(BaseModel):
     enabled: bool = True
     maintenance: bool = False
     priority: int = Field(default=100, ge=0, le=10000)
+    agent_url: Optional[str] = Field(default=None, max_length=500)
+    agent_token: Optional[str] = Field(default=None, max_length=500)
 
 
 class ServerUpdate(BaseModel):
@@ -146,6 +158,8 @@ class ServerUpdate(BaseModel):
     enabled: Optional[bool] = None
     maintenance: Optional[bool] = None
     priority: Optional[int] = Field(default=None, ge=0, le=10000)
+    agent_url: Optional[str] = Field(default=None, max_length=500)
+    agent_token: Optional[str] = Field(default=None, max_length=500)
 
 
 class ServerHeartbeat(BaseModel):
@@ -157,6 +171,15 @@ class PaymentOrderCreate(BaseModel):
     device_id: str = Field(min_length=8, max_length=120)
 
 
+class DeviceProvisionRequest(BaseModel):
+    device_id: str = Field(min_length=8, max_length=120)
+    public_key: str = Field(min_length=40, max_length=60)
+
+
+class SubscriptionGrant(BaseModel):
+    days: int = Field(default=30, ge=1, le=3650)
+
+
 def row_to_server(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"], "name": row["name"], "region": row["region"],
@@ -166,6 +189,8 @@ def row_to_server(row: sqlite3.Row) -> dict:
         "load_pct": row["load_pct"], "active_clients": row["active_clients"],
         "last_seen": row["last_seen"], "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "agent_url": row["agent_url"],
+        "agent_configured": bool(row["agent_url"] and row["agent_token"]),
     }
 
 
@@ -347,12 +372,14 @@ def create_server(payload: ServerCreate) -> dict:
             INSERT INTO servers (
                 name, region, endpoint_host, endpoint_port, public_key,
                 enabled, maintenance, priority, load_pct, active_clients,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+                created_at, updated_at, agent_url, agent_token
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)
         """, (
             payload.name.strip(), payload.region.strip(), payload.endpoint_host.strip(),
             payload.endpoint_port, payload.public_key.strip(), int(payload.enabled),
-            int(payload.maintenance), payload.priority, now, now
+            int(payload.maintenance), payload.priority, now, now,
+            (payload.agent_url or "").strip() or None,
+            (payload.agent_token or "").strip() or None
         ))
         server_id = cur.lastrowid
         db.commit()
@@ -405,6 +432,107 @@ def heartbeat(server_id: int, payload: ServerHeartbeat) -> dict:
         db.commit()
         row = db.execute("SELECT * FROM servers WHERE id = ?", (server_id,)).fetchone()
     return row_to_server(row)
+
+
+
+def subscription_is_active(device_id: str) -> bool:
+    with closing(connect_db()) as db:
+        row = db.execute(
+            "SELECT valid_until FROM subscriptions WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+    if not row:
+        return False
+    valid_until = parse_dt(row["valid_until"])
+    return bool(valid_until and valid_until > utc_now())
+
+
+async def provision_on_agent(server: sqlite3.Row, payload: DeviceProvisionRequest) -> dict:
+    agent_url = (server["agent_url"] or "").rstrip("/")
+    agent_token = (server["agent_token"] or "").strip()
+    if not agent_url or not agent_token:
+        raise RuntimeError("Agent is not configured")
+
+    headers = {"Authorization": f"Bearer {agent_token}"}
+    body = {"device_id": payload.device_id, "public_key": payload.public_key}
+
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        response = await client.post(agent_url + "/v1/peers", headers=headers, json=body)
+        response.raise_for_status()
+        data = response.json()
+
+    returned_key = data.get("server_public_key")
+    if returned_key and returned_key != server["public_key"]:
+        raise RuntimeError("Agent WireGuard public key does not match server registry")
+
+    return data
+
+
+@app.post("/api/v1/devices/provision")
+async def provision_device(payload: DeviceProvisionRequest) -> dict:
+    if not subscription_is_active(payload.device_id):
+        raise HTTPException(status_code=402, detail="Active subscription required")
+
+    with closing(connect_db()) as db:
+        servers = db.execute("""
+            SELECT * FROM servers
+            WHERE enabled = 1
+              AND maintenance = 0
+              AND agent_url IS NOT NULL
+              AND agent_url != ''
+              AND agent_token IS NOT NULL
+              AND agent_token != ''
+            ORDER BY priority ASC, load_pct ASC, active_clients ASC, id ASC
+        """).fetchall()
+
+    if not servers:
+        raise HTTPException(status_code=503, detail="No managed VPN servers are available")
+
+    errors = []
+    for server in servers:
+        try:
+            peer = await provision_on_agent(server, payload)
+            return {
+                "server_id": server["id"],
+                "server_name": server["name"],
+                "region": server["region"],
+                "endpoint": f'{server["endpoint_host"]}:{server["endpoint_port"]}',
+                "server_public_key": server["public_key"],
+                "address": peer["address"],
+                "dns": VPN_DNS,
+                "mtu": VPN_MTU,
+                "allowed_ips": "0.0.0.0/0",
+                "persistent_keepalive": 25,
+            }
+        except Exception as error:
+            errors.append(f'{server["name"]}: {error}')
+
+    raise HTTPException(
+        status_code=503,
+        detail="Managed VPN servers did not accept the device",
+    )
+
+
+@app.post("/api/v1/admin/subscriptions/{device_id}/grant", dependencies=[Depends(require_admin)])
+def grant_subscription(device_id: str, payload: SubscriptionGrant) -> dict:
+    with closing(connect_db()) as db:
+        row = db.execute(
+            "SELECT valid_until FROM subscriptions WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+        now = utc_now()
+        current = parse_dt(row["valid_until"]) if row else None
+        start = current if current and current > now else now
+        valid_until = start + timedelta(days=payload.days)
+        db.execute("""
+            INSERT INTO subscriptions (device_id, valid_until, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(device_id) DO UPDATE SET
+                valid_until = excluded.valid_until,
+                updated_at = excluded.updated_at
+        """, (device_id, valid_until.isoformat(), now_iso()))
+        db.commit()
+    return {"device_id": device_id, "active": True, "valid_until": valid_until.isoformat()}
 
 
 @app.post("/api/v1/payments/orders")
