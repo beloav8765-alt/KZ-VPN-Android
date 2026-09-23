@@ -161,7 +161,7 @@ class MainActivity : Activity() {
             background = roundedDrawable(CARD, BORDER, dp(18).toFloat())
             elevation = dp(2).toFloat()
             setOnClickListener {
-                if (!api.enabled) openServers()
+                if (api.enabled) openRegions() else openServers()
             }
         }
         serverCard.addView(label("СЕРВЕР", 11f, TEXT_SOFT, true).apply { gravity = Gravity.START })
@@ -214,7 +214,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Eneida 0.8.1", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Eneida 0.9.0", 11f, TEXT_SOFT), lp(top = 22))
         return scroll
     }
 
@@ -282,7 +282,9 @@ class MainActivity : Activity() {
                     return
                 }
 
-                if (!controller.state.value.configured) {
+                val selectedRegion = selectedRegionCode()
+                val currentRegion = currentManagedRegionCode()
+                if (!controller.state.value.configured || selectedRegion != currentRegion) {
                     provisionManaged(connectAfter = true)
                 } else {
                     requestVpn()
@@ -354,13 +356,18 @@ class MainActivity : Activity() {
         uiScope.launch {
             val result = runCatching {
                 val identity = identityStore.getOrCreate()
-                val provisioningData = api.provision(identity)
+                val requestedRegion = selectedRegionCode()
+                val provisioningData = api.provision(
+                    identity = identity,
+                    preferredRegion = requestedRegion
+                )
                 val config = api.makeWireGuardConfig(identity, provisioningData)
                 val installed = controller.installManagedConfig(
                     bytes = config,
                     serverName = provisioningData.serverName
                 )
                 installed.getOrThrow()
+                saveCurrentManagedRegion(provisioningData.regionCode)
             }
 
             provisioning = false
@@ -383,6 +390,32 @@ class MainActivity : Activity() {
 
     private fun openServers() {
         startActivity(Intent(this, ServersActivity::class.java))
+    }
+
+    private fun openRegions() {
+        startActivity(Intent(this, RegionActivity::class.java))
+    }
+
+    private fun selectedRegionCode(): String =
+        getSharedPreferences(RegionActivity.PREFS, MODE_PRIVATE)
+            .getString(RegionActivity.KEY_CODE, "auto")
+            ?: "auto"
+
+    private fun selectedRegionName(): String =
+        getSharedPreferences(RegionActivity.PREFS, MODE_PRIVATE)
+            .getString(RegionActivity.KEY_NAME, "Лучший сервер")
+            ?: "Лучший сервер"
+
+    private fun currentManagedRegionCode(): String =
+        getSharedPreferences("eneida_managed", MODE_PRIVATE)
+            .getString("current_region_code", "")
+            ?: ""
+
+    private fun saveCurrentManagedRegion(code: String) {
+        getSharedPreferences("eneida_managed", MODE_PRIVATE)
+            .edit()
+            .putString("current_region_code", code)
+            .apply()
     }
 
     private fun openPayment() {
@@ -435,11 +468,14 @@ class MainActivity : Activity() {
         }
 
         if (api.enabled) {
-            serverValue.text =
-                if (state.configured) state.activeServerName else "Автоматически"
-            serverHint.text =
-                if (state.configured) "Сервер назначен автоматически"
-                else "Eneida выберет доступный сервер"
+            val selectedName = selectedRegionName()
+            val selectedCode = selectedRegionCode()
+            serverValue.text = if (selectedCode == "auto") "⚡ Лучший сервер" else selectedName
+            serverHint.text = if (state.configured) {
+                "Сервер: ${state.activeServerName} • нажмите для смены региона"
+            } else {
+                "Нажмите, чтобы выбрать регион"
+            }
         } else {
             serverValue.text = state.activeServerName
             serverHint.text = when {
