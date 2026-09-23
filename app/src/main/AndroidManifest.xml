@@ -11,6 +11,9 @@
         android:theme="@style/Theme.KzVpn"
         android:usesCleartextTraffic="false">
         <activity
+            android:name="com.kzvpn.app.RegionActivity"
+            android:exported="false" />
+        <activity
             android:name="com.kzvpn.app.PaymentActivity"
             android:exported="false" />
         <activity
