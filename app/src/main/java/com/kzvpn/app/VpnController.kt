@@ -54,6 +54,10 @@ class VpnController(context: Context) {
     private val backend = GoBackend(appContext)
     private val legacyStore = SecureConfigStore(appContext)
     private val serverStore = ServerProfileStore(appContext)
+    private val managedPrefs = appContext.getSharedPreferences(
+        "eneida_managed_profile",
+        Context.MODE_PRIVATE
+    )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var config: Config? = null
@@ -245,15 +249,19 @@ class VpnController(context: Context) {
             Config.parse(ByteArrayInputStream(normalized))
             val endpoint = extractEndpoint(normalized)
 
-            serverStore.listServers()
-                .filter { it.name == MANAGED_PROFILE_NAME }
-                .forEach { serverStore.deleteServer(it.id) }
+            val previousManagedId = managedPrefs.getString(MANAGED_PROFILE_ID_KEY, null)
+            if (!previousManagedId.isNullOrBlank()) {
+                serverStore.deleteServer(previousManagedId)
+            }
 
             val profile = serverStore.addServer(
                 name = serverName.ifBlank { MANAGED_PROFILE_NAME },
                 endpoint = endpoint,
                 configBytes = normalized
             )
+            managedPrefs.edit()
+                .putString(MANAGED_PROFILE_ID_KEY, profile.id)
+                .apply()
             loadServerIntoMemory(profile.id)
             _state.update {
                 it.copy(message = "Eneida настроена автоматически")
