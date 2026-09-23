@@ -595,6 +595,9 @@ net.ipv4.ip_forward=1
 EOF
 sysctl --system >/dev/null
 systemctl enable --now wg-quick@wg0
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow {endpoint_port}/udp >/dev/null || true
+fi
 install -d /opt/eneida-agent
 python3 -m venv /opt/eneida-agent/.venv
 /opt/eneida-agent/.venv/bin/pip install --disable-pip-version-check --quiet httpx==0.28.1
