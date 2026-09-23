@@ -19,6 +19,9 @@ import android.widget.Space
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
@@ -37,6 +40,7 @@ class MainActivity : Activity() {
     private var subscriptionKnown = !api.enabled
     private var subscriptionActive = !api.enabled
     private var provisioning = false
+    private var routeWatchJob: Job? = null
 
     private lateinit var status: TextView
     private lateinit var statusHint: TextView
@@ -65,6 +69,13 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         refreshManagedAccess()
+        startRouteWatch()
+    }
+
+    override fun onPause() {
+        routeWatchJob?.cancel()
+        routeWatchJob = null
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -214,7 +225,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Eneida 0.9.0", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Eneida 0.9.1", 11f, TEXT_SOFT), lp(top = 22))
         return scroll
     }
 
@@ -368,6 +379,7 @@ class MainActivity : Activity() {
                 )
                 installed.getOrThrow()
                 saveCurrentManagedRegion(provisioningData.regionCode)
+                saveCurrentManagedServerId(provisioningData.serverId)
             }
 
             provisioning = false
@@ -384,6 +396,40 @@ class MainActivity : Activity() {
                     )
                 }
                 render(controller.state.value)
+            }
+        }
+    }
+
+    private fun startRouteWatch() {
+        routeWatchJob?.cancel()
+        if (!api.enabled) return
+
+        routeWatchJob = uiScope.launch {
+            while (isActive) {
+                delay(30_000)
+
+                if (provisioning || !subscriptionActive) continue
+                if (controller.state.value.connectionStatus != VpnController.ConnectionStatus.CONNECTED) continue
+
+                val serverId = currentManagedServerId()
+                if (serverId == null) continue
+
+                val identity = runCatching { identityStore.getOrCreate() }.getOrNull() ?: continue
+                val route = runCatching {
+                    api.routeStatus(
+                        identity = identity,
+                        currentServerId = serverId,
+                        preferredRegion = selectedRegionCode()
+                    )
+                }.getOrNull() ?: continue
+
+                if (route.reprovision) {
+                    controller.setMessage("Переключаемся на рабочий сервер…")
+                    controller.disconnect()
+                    delay(1_200)
+                    provisionManaged(connectAfter = true)
+                    delay(10_000)
+                }
             }
         }
     }
@@ -410,6 +456,19 @@ class MainActivity : Activity() {
         getSharedPreferences("eneida_managed", MODE_PRIVATE)
             .getString("current_region_code", "")
             ?: ""
+
+    private fun currentManagedServerId(): Int? {
+        val value = getSharedPreferences("eneida_managed", MODE_PRIVATE)
+            .getInt("current_server_id", 0)
+        return value.takeIf { it > 0 }
+    }
+
+    private fun saveCurrentManagedServerId(serverId: Int) {
+        getSharedPreferences("eneida_managed", MODE_PRIVATE)
+            .edit()
+            .putInt("current_server_id", serverId)
+            .apply()
+    }
 
     private fun saveCurrentManagedRegion(code: String) {
         getSharedPreferences("eneida_managed", MODE_PRIVATE)
