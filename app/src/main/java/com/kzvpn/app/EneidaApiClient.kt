@@ -22,6 +22,7 @@ class EneidaApiClient {
     )
 
     data class Provisioning(
+        val serverId: Int,
         val serverName: String,
         val regionCode: String,
         val regionName: String,
@@ -77,6 +78,7 @@ class EneidaApiClient {
 
         val json = request("POST", "/api/v1/devices/provision", body.toString())
         Provisioning(
+            serverId = json.getInt("server_id"),
             serverName = json.optString("server_name", "Eneida"),
             regionCode = json.optString("region_code", "auto"),
             regionName = json.optString("region_name", "Лучший сервер"),
@@ -87,6 +89,30 @@ class EneidaApiClient {
             mtu = json.optInt("mtu", 1280),
             allowedIps = json.optString("allowed_ips", "0.0.0.0/0"),
             persistentKeepalive = json.optInt("persistent_keepalive", 25)
+        )
+    }
+
+    data class RouteStatus(
+        val reprovision: Boolean,
+        val currentValid: Boolean,
+        val recommendedServerId: Int?
+    )
+
+    suspend fun routeStatus(
+        identity: DeviceIdentityStore.Identity,
+        currentServerId: Int?,
+        preferredRegion: String?
+    ): RouteStatus = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("device_id", identity.deviceId)
+        if (currentServerId != null) body.put("current_server_id", currentServerId)
+        if (!preferredRegion.isNullOrBlank()) body.put("preferred_region", preferredRegion)
+
+        val json = request("POST", "/api/v1/devices/route-status", body.toString())
+        RouteStatus(
+            reprovision = json.optBoolean("reprovision", false),
+            currentValid = json.optBoolean("current_valid", false),
+            recommendedServerId = if (json.isNull("recommended_server_id")) null else json.optInt("recommended_server_id")
         )
     }
 
