@@ -1,23 +1,22 @@
-import ipaddress
 import json
 import os
 import sqlite3
 import subprocess
+import time
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
+import httpx
 
-INTERFACE = os.getenv("ENEIDA_AGENT_INTERFACE", "wg0").strip()
+CONTROL_URL = os.getenv("ENEIDA_CONTROL_URL", "").strip().rstrip("/")
+SERVER_ID = int(os.getenv("ENEIDA_SERVER_ID", "0"))
 AGENT_TOKEN = os.getenv("ENEIDA_AGENT_TOKEN", "").strip()
-ADDRESS_POOL = os.getenv("ENEIDA_AGENT_ADDRESS_POOL", "10.66.66.0/24").strip()
-SERVER_ADDRESS = os.getenv("ENEIDA_AGENT_SERVER_ADDRESS", "10.66.66.1").strip()
+INTERFACE = os.getenv("ENEIDA_AGENT_INTERFACE", "wg0").strip()
+POLL_SECONDS = int(os.getenv("ENEIDA_AGENT_POLL_SECONDS", "5"))
 DB_PATH = Path(os.getenv("ENEIDA_AGENT_DB", "/var/lib/eneida-agent/agent.db"))
 
-app = FastAPI(title="Eneida Agent", version="0.1.0")
+HEADERS = {"Authorization": f"Bearer {AGENT_TOKEN}"}
 
 
 def now_iso() -> str:
@@ -34,205 +33,178 @@ def connect_db() -> sqlite3.Connection:
 def init_db() -> None:
     with closing(connect_db()) as db:
         db.execute("""
-            CREATE TABLE IF NOT EXISTS peers (
+            CREATE TABLE IF NOT EXISTS managed_peers (
                 device_id TEXT PRIMARY KEY,
-                public_key TEXT NOT NULL UNIQUE,
-                address TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL,
+                public_key TEXT NOT NULL,
+                address TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
         """)
         db.commit()
 
 
-def run_wg(*args: str) -> str:
-    cmd = ["wg", *args]
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+def run(*args: str) -> str:
+    result = subprocess.run(args, check=True, capture_output=True, text=True)
     return result.stdout.strip()
 
 
-def require_token(authorization: Optional[str] = Header(default=None)) -> None:
-    if authorization != f"Bearer {AGENT_TOKEN}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
+def wg(*args: str) -> str:
+    return run("wg", *args)
 
 
-def ensure_interface() -> None:
+def server_public_key() -> str:
+    return wg("show", INTERFACE, "public-key")
+
+
+def cpu_percent() -> int:
     try:
-        run_wg("show", INTERFACE)
-    except Exception as error:
-        raise RuntimeError(f"WireGuard interface {INTERFACE} is not available") from error
+        load1 = float(Path("/proc/loadavg").read_text().split()[0])
+        cpus = max(os.cpu_count() or 1, 1)
+        return max(0, min(100, round(load1 / cpus * 100)))
+    except Exception:
+        return 0
 
 
-def allocate_address(db: sqlite3.Connection) -> str:
-    network = ipaddress.ip_network(ADDRESS_POOL, strict=False)
-    used = {row["address"].split("/")[0] for row in db.execute("SELECT address FROM peers").fetchall()}
-    reserved = {str(network.network_address), str(network.broadcast_address), SERVER_ADDRESS}
-
-    for host in network.hosts():
-        value = str(host)
-        if value in reserved or value in used:
-            continue
-        return f"{value}/{network.prefixlen}"
-
-    raise HTTPException(status_code=503, detail="Address pool is exhausted")
-
-
-def apply_peer(public_key: str, address: str) -> None:
-    run_wg("set", INTERFACE, "peer", public_key, "allowed-ips", address)
-
-
-def remove_peer(public_key: str) -> None:
-    run_wg("set", INTERFACE, "peer", public_key, "remove")
-
-
-def restore_peers() -> None:
-    with closing(connect_db()) as db:
-        rows = db.execute("SELECT public_key, address FROM peers").fetchall()
-    for row in rows:
-        try:
-            apply_peer(row["public_key"], row["address"])
-        except Exception:
-            pass
-
-
-def read_interface_public_key() -> str:
-    return run_wg("show", INTERFACE, "public-key")
+def ram_percent() -> int:
+    try:
+        data = {}
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            data[key] = int(value.strip().split()[0])
+        total = data.get("MemTotal", 0)
+        available = data.get("MemAvailable", 0)
+        if total <= 0:
+            return 0
+        return max(0, min(100, round((total - available) / total * 100)))
+    except Exception:
+        return 0
 
 
 def active_clients() -> int:
-    output = run_wg("show", INTERFACE, "latest-handshakes")
-    if not output:
-        return 0
-    now = int(datetime.now(timezone.utc).timestamp())
-    count = 0
-    for line in output.splitlines():
-        parts = line.split()
-        if len(parts) != 2:
-            continue
-        try:
+    try:
+        output = wg("show", INTERFACE, "latest-handshakes")
+        now = int(time.time())
+        count = 0
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) != 2:
+                continue
             ts = int(parts[1])
-        except ValueError:
-            continue
-        if ts > 0 and now - ts <= 180:
-            count += 1
-    return count
+            if ts > 0 and now - ts <= 180:
+                count += 1
+        return count
+    except Exception:
+        return 0
 
 
-@app.on_event("startup")
-def on_startup() -> None:
-    if not AGENT_TOKEN:
-        raise RuntimeError("ENEIDA_AGENT_TOKEN is required")
-    init_db()
-    ensure_interface()
-    restore_peers()
-
-
-class PeerCreate(BaseModel):
-    device_id: str = Field(min_length=8, max_length=120)
-    public_key: str = Field(min_length=40, max_length=60)
-
-
-@app.get("/health", dependencies=[Depends(require_token)])
-def health() -> dict:
-    return {
-        "ok": True,
-        "interface": INTERFACE,
-        "server_public_key": read_interface_public_key(),
-        "active_clients": active_clients(),
-    }
-
-
-@app.get("/v1/peers", dependencies=[Depends(require_token)])
-def list_peers() -> dict:
+def managed_rows() -> dict:
     with closing(connect_db()) as db:
-        rows = db.execute("SELECT * FROM peers ORDER BY created_at ASC").fetchall()
-    return {
-        "peers": [
-            {
-                "device_id": row["device_id"],
-                "public_key": row["public_key"],
-                "address": row["address"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-            }
-            for row in rows
-        ]
-    }
+        rows = db.execute("SELECT * FROM managed_peers").fetchall()
+    return {row["device_id"]: dict(row) for row in rows}
 
 
-@app.post("/v1/peers", dependencies=[Depends(require_token)])
-def create_or_update_peer(payload: PeerCreate) -> dict:
-    now = now_iso()
-    with closing(connect_db()) as db:
-        existing = db.execute(
-            "SELECT * FROM peers WHERE device_id = ?",
-            (payload.device_id,),
-        ).fetchone()
+def apply_peer(public_key: str, address: str) -> None:
+    wg("set", INTERFACE, "peer", public_key, "allowed-ips", address)
 
-        if existing:
-            if existing["public_key"] != payload.public_key:
-                try:
-                    remove_peer(existing["public_key"])
-                except Exception:
-                    pass
-                db.execute(
-                    "UPDATE peers SET public_key = ?, updated_at = ? WHERE device_id = ?",
-                    (payload.public_key, now, payload.device_id),
-                )
-                db.commit()
-                existing = db.execute(
-                    "SELECT * FROM peers WHERE device_id = ?",
-                    (payload.device_id,),
-                ).fetchone()
 
-            apply_peer(existing["public_key"], existing["address"])
-            return {
-                "device_id": existing["device_id"],
-                "public_key": existing["public_key"],
-                "address": existing["address"],
-                "server_public_key": read_interface_public_key(),
-            }
-
-        address = allocate_address(db)
-        db.execute(
-            """
-            INSERT INTO peers (device_id, public_key, address, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (payload.device_id, payload.public_key, address, now, now),
-        )
-        db.commit()
-
+def remove_peer(public_key: str) -> None:
     try:
-        apply_peer(payload.public_key, address)
-    except Exception as error:
-        with closing(connect_db()) as db:
-            db.execute("DELETE FROM peers WHERE device_id = ?", (payload.device_id,))
-            db.commit()
-        raise HTTPException(status_code=500, detail=f"Failed to apply WireGuard peer: {error}")
-
-    return {
-        "device_id": payload.device_id,
-        "public_key": payload.public_key,
-        "address": address,
-        "server_public_key": read_interface_public_key(),
-    }
-
-
-@app.delete("/v1/peers/{device_id}", dependencies=[Depends(require_token)])
-def delete_peer(device_id: str) -> dict:
-    with closing(connect_db()) as db:
-        row = db.execute(
-            "SELECT * FROM peers WHERE device_id = ?",
-            (device_id,),
-        ).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Peer not found")
-        db.execute("DELETE FROM peers WHERE device_id = ?", (device_id,))
-        db.commit()
-
-    try:
-        remove_peer(row["public_key"])
+        wg("set", INTERFACE, "peer", public_key, "remove")
     except Exception:
         pass
-    return {"ok": True}
+
+
+def reconcile(desired: list[dict]) -> None:
+    current = managed_rows()
+    desired_by_device = {item["device_id"]: item for item in desired}
+
+    for device_id, old in current.items():
+        item = desired_by_device.get(device_id)
+        if item is None:
+            remove_peer(old["public_key"])
+            with closing(connect_db()) as db:
+                db.execute("DELETE FROM managed_peers WHERE device_id = ?", (device_id,))
+                db.commit()
+            continue
+
+        if old["public_key"] != item["public_key"]:
+            remove_peer(old["public_key"])
+
+    for item in desired:
+        apply_peer(item["public_key"], item["address"])
+        with closing(connect_db()) as db:
+            db.execute("""
+                INSERT INTO managed_peers (device_id, public_key, address, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(device_id) DO UPDATE SET
+                    public_key = excluded.public_key,
+                    address = excluded.address,
+                    updated_at = excluded.updated_at
+            """, (
+                item["device_id"],
+                item["public_key"],
+                item["address"],
+                now_iso(),
+            ))
+            db.commit()
+
+
+def post_heartbeat(client: httpx.Client, error: str | None = None) -> None:
+    payload = {
+        "public_key": server_public_key(),
+        "active_clients": active_clients(),
+        "cpu_pct": cpu_percent(),
+        "ram_pct": ram_percent(),
+        "error": error,
+    }
+    response = client.post(
+        f"{CONTROL_URL}/api/v1/agent/{SERVER_ID}/heartbeat",
+        headers=HEADERS,
+        json=payload,
+    )
+    response.raise_for_status()
+
+
+def fetch_desired(client: httpx.Client) -> list[dict]:
+    response = client.get(
+        f"{CONTROL_URL}/api/v1/agent/{SERVER_ID}/sync",
+        headers=HEADERS,
+    )
+    response.raise_for_status()
+    return response.json().get("peers", [])
+
+
+def main() -> None:
+    if not CONTROL_URL.startswith("https://"):
+        raise SystemExit("ENEIDA_CONTROL_URL must use HTTPS")
+    if SERVER_ID <= 0:
+        raise SystemExit("ENEIDA_SERVER_ID is required")
+    if not AGENT_TOKEN:
+        raise SystemExit("ENEIDA_AGENT_TOKEN is required")
+
+    init_db()
+    wg("show", INTERFACE)
+
+    with httpx.Client(timeout=15.0) as client:
+        last_error = None
+        while True:
+            try:
+                desired = fetch_desired(client)
+                reconcile(desired)
+                post_heartbeat(client)
+                last_error = None
+            except Exception as error:
+                message = str(error)[:500]
+                if message != last_error:
+                    try:
+                        post_heartbeat(client, message)
+                    except Exception:
+                        pass
+                    last_error = message
+            time.sleep(max(POLL_SECONDS, 2))
+
+
+if __name__ == "__main__":
+    main()
