@@ -67,6 +67,7 @@ th{color:var(--muted)}.table-wrap{overflow:auto;margin-top:12px}
     <button id="tab-subscriptions" onclick="showPage('subscriptions')">Подписки</button>
     <button id="tab-payments" onclick="showPage('payments')">Оплаты</button>
     <button id="tab-events" onclick="showPage('events')">Ошибки и события</button>
+    <button id="tab-system" onclick="showPage('system')">Система</button>
   </div>
 
   <div id="page-dashboard" class="page active">
@@ -145,6 +146,20 @@ th{color:var(--muted)}.table-wrap{overflow:auto;margin-top:12px}
     <div class="section">
       <div class="section-title"><b>Ошибки и события</b><button onclick="loadDashboard()">Обновить</button></div>
       <div id="events" class="events"></div>
+    </div>
+  </div>
+
+  <div id="page-system" class="page">
+    <div class="section">
+      <b>Центральное управление Eneida</b>
+      <div class="help">База Eneida содержит серверы, подписки, платежи и привязки устройств. Резервная копия нужна для переноса Control на новый VPS без ручного восстановления данных.</div>
+      <div class="actions">
+        <button class="primary" onclick="downloadBackup()">Скачать резервную копию</button>
+      </div>
+    </div>
+    <div class="section">
+      <b>Перенос Control</b>
+      <div class="help">Следующий этап автоматизации — установка нового Eneida Control на выбранный VPS из этой панели, перенос базы и переключение стабильного домена API. После этого центральный сервер тоже можно будет заменять без изменения кода приложения.</div>
     </div>
   </div>
 
@@ -293,6 +308,20 @@ function prepareReplacement(id){
   $('installButton').textContent='Установить новый и заменить '+s.name;
   $('installStatus').textContent='После успешной установки новый сервер войдёт в работу, старый будет переведён в обслуживание.';
   window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function downloadBackup(){
+  try{
+    var r=await fetch('/api/v1/admin/system/backup',{headers:{'Authorization':'Bearer '+token()}});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    var blob=await r.blob();
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='eneida-control-backup.db';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(a.href)},1000);
+    setMsg('Резервная копия создана');
+  }catch(e){setMsg('Ошибка резервного копирования: '+e.message)}
 }
 
 async function provisionVps(){
