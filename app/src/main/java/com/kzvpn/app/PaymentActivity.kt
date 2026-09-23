@@ -33,7 +33,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.UUID
 
 class PaymentActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -176,7 +175,7 @@ class PaymentActivity : Activity() {
             background = rounded(ERROR_BG, ERROR_BORDER)
         }
         root.addView(message, lp(12))
-        root.addView(centered("Eneida 0.7.0", 11f, TEXT_SOFT, false), lp(18))
+        root.addView(centered("Eneida 0.8.0", 11f, TEXT_SOFT, false), lp(18))
         return scroll
     }
 
@@ -280,14 +279,8 @@ class PaymentActivity : Activity() {
         return JSONObject(text)
     }
 
-    private fun deviceId(): String {
-        val prefs = getSharedPreferences("eneida_device", MODE_PRIVATE)
-        val current = prefs.getString("device_id", null)
-        if (!current.isNullOrBlank()) return current
-        val created = UUID.randomUUID().toString()
-        prefs.edit().putString("device_id", created).apply()
-        return created
-    }
+    private fun deviceId(): String =
+        DeviceIdentityStore(this).getOrCreate().deviceId
 
     private fun makeQr(value: String, size: Int): Bitmap {
         val matrix = QRCodeWriter().encode(value, BarcodeFormat.QR_CODE, size, size)
