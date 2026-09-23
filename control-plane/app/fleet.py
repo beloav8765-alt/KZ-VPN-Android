@@ -444,10 +444,16 @@ def admin_fleet_servers() -> dict:
                 "city": row["city"],
                 "region_code": region_code_for(row),
                 "flag": row["flag"],
+                "priority": int(row["priority"] or 100),
                 "endpoint": f'{row["endpoint_host"]}:{row["endpoint_port"]}',
                 "enabled": bool(row["enabled"]),
                 "maintenance": bool(row["maintenance"]),
-                "status": "online" if server_is_online(row) else (row["status"] or "offline"),
+                "status": (
+                    "maintenance" if row["maintenance"] else
+                    "disabled" if not row["enabled"] else
+                    "online" if server_is_online(row) else
+                    (row["status"] or "offline")
+                ),
                 "load_pct": int(row["load_pct"] or 0),
                 "cpu_pct": int(row["cpu_pct"] or 0),
                 "ram_pct": int(row["ram_pct"] or 0),
