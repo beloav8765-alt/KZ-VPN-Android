@@ -5,6 +5,7 @@ import os
 import secrets
 import shlex
 import sqlite3
+import tempfile
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone
@@ -381,6 +382,28 @@ def agent_sync(server_id: int, authorization: Optional[str] = Header(default=Non
             for row in peers
         ],
     }
+
+
+@router.get("/api/v1/admin/system/backup", dependencies=[Depends(require_admin)])
+def download_backup():
+    handle = tempfile.NamedTemporaryFile(prefix="eneida-backup-", suffix=".db", delete=False)
+    backup_path = Path(handle.name)
+    handle.close()
+
+    source = connect_db()
+    target = sqlite3.connect(backup_path)
+    try:
+        source.backup(target)
+    finally:
+        target.close()
+        source.close()
+
+    return FileResponse(
+        backup_path,
+        media_type="application/octet-stream",
+        filename="eneida-control-backup.db",
+        background=BackgroundTask(lambda: backup_path.unlink(missing_ok=True)),
+    )
 
 
 @router.get("/api/v1/admin/dashboard", dependencies=[Depends(require_admin)])
