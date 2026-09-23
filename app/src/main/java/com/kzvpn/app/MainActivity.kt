@@ -23,6 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.util.Locale
 
 class MainActivity : Activity() {
@@ -30,6 +31,12 @@ class MainActivity : Activity() {
         get() = (application as KzVpnApp).vpnController
 
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val api = EneidaApiClient()
+    private val identityStore by lazy { DeviceIdentityStore(this) }
+
+    private var subscriptionKnown = !api.enabled
+    private var subscriptionActive = !api.enabled
+    private var provisioning = false
 
     private lateinit var status: TextView
     private lateinit var statusHint: TextView
@@ -44,6 +51,7 @@ class MainActivity : Activity() {
     private lateinit var connectButton: Button
     private lateinit var powerRing: FrameLayout
     private lateinit var serversButton: Button
+    private lateinit var paymentButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +60,11 @@ class MainActivity : Activity() {
         uiScope.launch {
             controller.state.collectLatest { render(it) }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshManagedAccess()
     }
 
     override fun onDestroy() {
@@ -126,13 +139,7 @@ class MainActivity : Activity() {
             background = circleDrawable(PRIMARY, PRIMARY)
             setPadding(dp(12), dp(18), dp(12), dp(18))
             elevation = dp(8).toFloat()
-            setOnClickListener {
-                when (controller.state.value.connectionStatus) {
-                    VpnController.ConnectionStatus.DISCONNECTED -> requestVpn()
-                    VpnController.ConnectionStatus.CONNECTED -> controller.disconnect()
-                    else -> Unit
-                }
-            }
+            setOnClickListener { handlePowerTap() }
         }
 
         powerRing.addView(
@@ -153,12 +160,14 @@ class MainActivity : Activity() {
             setPadding(dp(18), dp(15), dp(18), dp(15))
             background = roundedDrawable(CARD, BORDER, dp(18).toFloat())
             elevation = dp(2).toFloat()
-            setOnClickListener { openServers() }
+            setOnClickListener {
+                if (!api.enabled) openServers()
+            }
         }
         serverCard.addView(label("СЕРВЕР", 11f, TEXT_SOFT, true).apply { gravity = Gravity.START })
-        serverValue = label("Профиль не выбран", 17f, TEXT_DARK, true).apply { gravity = Gravity.START }
+        serverValue = label("Автоматически", 17f, TEXT_DARK, true).apply { gravity = Gravity.START }
         serverCard.addView(serverValue, lp(top = 6))
-        serverHint = label("Нажмите, чтобы выбрать сервер", 12f, TEXT_MUTED).apply { gravity = Gravity.START }
+        serverHint = label("Eneida выберет доступный сервер", 12f, TEXT_MUTED).apply { gravity = Gravity.START }
         serverCard.addView(serverHint, lp(top = 5))
         root.addView(serverCard, lp())
 
@@ -181,13 +190,17 @@ class MainActivity : Activity() {
 
         root.addView(statsRow, lp(top = 12))
 
-        serversButton = secondaryButton("Серверы") { openServers() }
+        serversButton = secondaryButton("Серверы") { openServers() }.apply {
+            visibility = if (api.enabled) View.GONE else View.VISIBLE
+        }
         root.addView(serversButton, lp(top = 18))
 
-        val paymentButton = secondaryButton("Подписка и оплата") {
-            startActivity(Intent(this, PaymentActivity::class.java))
+        paymentButton = secondaryButton("Подписка и оплата") {
+            openPayment()
+        }.apply {
+            visibility = if (api.enabled) View.VISIBLE else View.GONE
         }
-        root.addView(paymentButton, lp(top = 10))
+        root.addView(paymentButton, lp(top = if (api.enabled) 18 else 0))
 
         val settingsButton = secondaryButton("Постоянная защита") {
             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
@@ -201,7 +214,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Eneida 0.7.0", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Eneida 0.8.0", 11f, TEXT_SOFT), lp(top = 22))
         return scroll
     }
 
@@ -250,8 +263,130 @@ class MainActivity : Activity() {
             setOnClickListener { action() }
         }
 
+    private fun handlePowerTap() {
+        when (controller.state.value.connectionStatus) {
+            VpnController.ConnectionStatus.CONNECTED -> controller.disconnect()
+            VpnController.ConnectionStatus.DISCONNECTED -> {
+                if (!api.enabled) {
+                    requestVpn()
+                    return
+                }
+
+                if (!subscriptionKnown) {
+                    refreshManagedAccess()
+                    return
+                }
+
+                if (!subscriptionActive) {
+                    openPayment()
+                    return
+                }
+
+                if (!controller.state.value.configured) {
+                    provisionManaged(connectAfter = true)
+                } else {
+                    requestVpn()
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    private fun refreshManagedAccess() {
+        if (!api.enabled) {
+            subscriptionKnown = true
+            subscriptionActive = true
+            render(controller.state.value)
+            return
+        }
+
+        uiScope.launch {
+            val identity = runCatching { identityStore.getOrCreate() }.getOrElse {
+                controller.setMessage("Не удалось создать защищённый профиль устройства")
+                return@launch
+            }
+
+            runCatching { api.subscription(identity.deviceId) }
+                .onSuccess { subscription ->
+                    subscriptionKnown = true
+                    subscriptionActive = subscription.active
+                    saveSubscriptionCache(subscription.active, subscription.validUntil)
+
+                    paymentButton.text = if (subscription.active) {
+                        val date = formatSubscriptionDate(subscription.validUntil)
+                        if (date.isBlank()) "Подписка активна" else "Подписка до $date"
+                    } else {
+                        "Подписка и оплата"
+                    }
+
+                    if (subscription.active &&
+                        !controller.state.value.configured &&
+                        !provisioning
+                    ) {
+                        provisionManaged(connectAfter = false)
+                    } else {
+                        render(controller.state.value)
+                    }
+                }
+                .onFailure {
+                    subscriptionKnown = true
+                    subscriptionActive = cachedSubscriptionActive()
+                    paymentButton.text =
+                        if (subscriptionActive) "Подписка активна" else "Подписка и оплата"
+                    if (!subscriptionActive) {
+                        controller.setMessage("Не удалось проверить подписку. Проверьте интернет.")
+                    }
+                    render(controller.state.value)
+                }
+        }
+    }
+
+    private fun provisionManaged(connectAfter: Boolean) {
+        if (!api.enabled || provisioning) return
+        if (!subscriptionActive) {
+            openPayment()
+            return
+        }
+
+        provisioning = true
+        render(controller.state.value)
+
+        uiScope.launch {
+            val result = runCatching {
+                val identity = identityStore.getOrCreate()
+                val provisioningData = api.provision(identity)
+                val config = api.makeWireGuardConfig(identity, provisioningData)
+                val installed = controller.installManagedConfig(
+                    bytes = config,
+                    serverName = provisioningData.serverName
+                )
+                installed.getOrThrow()
+            }
+
+            provisioning = false
+
+            result.onSuccess {
+                if (connectAfter) requestVpn()
+            }.onFailure { error ->
+                if (error is EneidaApiException && error.code == 402) {
+                    subscriptionActive = false
+                    openPayment()
+                } else {
+                    controller.setMessage(
+                        error.message ?: "Не удалось автоматически настроить VPN"
+                    )
+                }
+                render(controller.state.value)
+            }
+        }
+    }
+
     private fun openServers() {
         startActivity(Intent(this, ServersActivity::class.java))
+    }
+
+    private fun openPayment() {
+        startActivity(Intent(this, PaymentActivity::class.java))
     }
 
     private fun requestVpn() {
@@ -276,34 +411,60 @@ class MainActivity : Activity() {
         val connected = state.connectionStatus == VpnController.ConnectionStatus.CONNECTED
         val disconnected = state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED
 
-        status.text = when (state.connectionStatus) {
-            VpnController.ConnectionStatus.DISCONNECTED -> "VPN отключён"
-            VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
-            VpnController.ConnectionStatus.CONNECTED -> "Соединение защищено"
-            VpnController.ConnectionStatus.DISCONNECTING -> "Отключение…"
+        status.text = when {
+            provisioning -> "Настройка VPN…"
+            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED -> "VPN отключён"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "Соединение защищено"
+            else -> "Отключение…"
         }
         status.setTextColor(if (connected) SUCCESS else TEXT_DARK)
 
         statusHint.text = when {
             connected -> "Интернет-соединение защищено"
-            !state.configured -> "Добавьте VPN-сервер для подключения"
+            provisioning -> "Подбираем доступный сервер Eneida"
+            api.enabled && subscriptionKnown && !subscriptionActive ->
+                "Для подключения нужна активная подписка"
+            api.enabled && !subscriptionKnown ->
+                "Проверяем подписку…"
+            api.enabled && !state.configured ->
+                "Eneida автоматически настроит VPN"
+            !state.configured ->
+                "Добавьте VPN-сервер для подключения"
             else -> "Нажмите кнопку, чтобы включить защиту"
         }
 
-        serverValue.text = state.activeServerName
-        serverHint.text = when {
-            state.servers.size > 1 -> "\${state.servers.size} серверов • нажмите для быстрой смены"
-            state.configured -> "WireGuard • нажмите для управления"
-            else -> "Нажмите, чтобы добавить сервер"
+        if (api.enabled) {
+            serverValue.text =
+                if (state.configured) state.activeServerName else "Автоматически"
+            serverHint.text =
+                if (state.configured) "Сервер назначен автоматически"
+                else "Eneida выберет доступный сервер"
+        } else {
+            serverValue.text = state.activeServerName
+            serverHint.text = when {
+                state.servers.size > 1 ->
+                    "${state.servers.size} серверов • нажмите для быстрой смены"
+                state.configured -> "WireGuard • нажмите для управления"
+                else -> "Нажмите, чтобы добавить сервер"
+            }
         }
 
-        connectButton.isEnabled = state.configured && (disconnected || connected)
+        connectButton.isEnabled = when {
+            provisioning -> false
+            connected -> true
+            !disconnected -> false
+            api.enabled -> subscriptionKnown
+            else -> state.configured
+        }
 
-        connectButton.text = when (state.connectionStatus) {
-            VpnController.ConnectionStatus.CONNECTED -> "ОТКЛЮЧИТЬ"
-            VpnController.ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ…"
-            VpnController.ConnectionStatus.DISCONNECTING -> "ОТКЛЮЧЕНИЕ…"
-            VpnController.ConnectionStatus.DISCONNECTED -> "ПОДКЛЮЧИТЬ"
+        connectButton.text = when {
+            provisioning -> "НАСТРОЙКА…"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "ОТКЛЮЧИТЬ"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ…"
+            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> "ОТКЛЮЧЕНИЕ…"
+            api.enabled && subscriptionKnown && !subscriptionActive -> "ПОДПИСКА"
+            else -> "ПОДКЛЮЧИТЬ"
         }
 
         connectButton.background = when {
@@ -314,7 +475,11 @@ class MainActivity : Activity() {
 
         powerRing.background = when {
             connected -> circleDrawable(RING_CONNECTED, RING_CONNECTED)
-            !state.configured -> circleDrawable(RING_DISABLED, RING_DISABLED)
+            provisioning -> circleDrawable(RING_IDLE, RING_IDLE)
+            api.enabled && subscriptionKnown && !subscriptionActive ->
+                circleDrawable(RING_DISABLED, RING_DISABLED)
+            !state.configured && !api.enabled ->
+                circleDrawable(RING_DISABLED, RING_DISABLED)
             else -> circleDrawable(RING_IDLE, RING_IDLE)
         }
 
@@ -329,6 +494,31 @@ class MainActivity : Activity() {
         val msg = state.message.orEmpty()
         message.text = msg
         message.visibility = if (msg.isBlank()) View.GONE else View.VISIBLE
+    }
+
+    private fun saveSubscriptionCache(active: Boolean, validUntil: String?) {
+        getSharedPreferences("eneida_access", MODE_PRIVATE)
+            .edit()
+            .putBoolean("active", active)
+            .putString("valid_until", validUntil)
+            .apply()
+    }
+
+    private fun cachedSubscriptionActive(): Boolean {
+        val prefs = getSharedPreferences("eneida_access", MODE_PRIVATE)
+        if (!prefs.getBoolean("active", false)) return false
+        val validUntil = prefs.getString("valid_until", null) ?: return false
+        return runCatching {
+            Instant.parse(validUntil).isAfter(Instant.now())
+        }.getOrDefault(false)
+    }
+
+    private fun formatSubscriptionDate(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        val parts = raw.take(10).split("-")
+        return if (parts.size == 3) {
+            parts[2] + "." + parts[1] + "." + parts[0]
+        } else ""
     }
 
     private fun circleDrawable(fill: Int, stroke: Int): GradientDrawable =
