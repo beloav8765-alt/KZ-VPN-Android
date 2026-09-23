@@ -197,6 +197,12 @@ class DeviceProvisionRequest(BaseModel):
     preferred_region: Optional[str] = Field(default=None, max_length=40)
 
 
+class RouteStatusRequest(BaseModel):
+    device_id: str = Field(min_length=8, max_length=120)
+    current_server_id: Optional[int] = Field(default=None, ge=1)
+    preferred_region: Optional[str] = Field(default=None, max_length=40)
+
+
 class AgentHeartbeat(BaseModel):
     public_key: str = Field(min_length=40, max_length=80)
     active_clients: int = Field(default=0, ge=0, le=1000000)
@@ -295,6 +301,12 @@ def provision_device(payload: DeviceProvisionRequest) -> dict:
             WHERE server_id = ? AND device_id = ?
         """, (server["id"], payload.device_id)).fetchone()
 
+        db.execute("""
+            UPDATE device_assignments
+            SET enabled = 0, updated_at = ?
+            WHERE device_id = ? AND server_id != ?
+        """, (now_iso(), payload.device_id, server["id"]))
+
         if existing:
             address = existing["address"]
             db.execute("""
@@ -326,6 +338,56 @@ def provision_device(payload: DeviceProvisionRequest) -> dict:
         "mtu": int(os.getenv("ENEIDA_VPN_MTU", "1280")),
         "allowed_ips": "0.0.0.0/0",
         "persistent_keepalive": 25,
+    }
+
+
+@router.post("/api/v1/devices/route-status")
+def route_status(payload: RouteStatusRequest) -> dict:
+    if not subscription_active(payload.device_id):
+        raise HTTPException(status_code=402, detail="Active subscription required")
+
+    preferred = (payload.preferred_region or "auto").strip().lower() or "auto"
+
+    with closing(connect_db()) as db:
+        rows = db.execute("""
+            SELECT * FROM servers
+            WHERE enabled = 1 AND maintenance = 0
+            ORDER BY priority ASC, load_pct ASC, active_clients ASC, id ASC
+        """).fetchall()
+
+    candidates = [row for row in rows if server_is_online(row)]
+    if preferred != "auto":
+        candidates = [row for row in candidates if region_code_for(row) == preferred]
+
+    recommended = candidates[0] if candidates else None
+
+    current = None
+    if payload.current_server_id:
+        with closing(connect_db()) as db:
+            current = db.execute(
+                "SELECT * FROM servers WHERE id = ?",
+                (payload.current_server_id,),
+            ).fetchone()
+
+    current_valid = bool(
+        current
+        and current["enabled"]
+        and not current["maintenance"]
+        and server_is_online(current)
+        and (preferred == "auto" or region_code_for(current) == preferred)
+    )
+
+    reprovision = not current_valid
+    if current_valid and recommended and preferred != "auto":
+        reprovision = False
+
+    return {
+        "ok": True,
+        "reprovision": reprovision,
+        "current_valid": current_valid,
+        "recommended_server_id": recommended["id"] if recommended else None,
+        "recommended_server_name": recommended["name"] if recommended else None,
+        "region_code": preferred,
     }
 
 
