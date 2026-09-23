@@ -114,7 +114,7 @@ class MainActivity : Activity() {
         root.addView(statusHint, lp(top = 8))
 
         sessionText = label("Сеанс 00:00:00", 12f, TEXT_SOFT, true).apply {
-            visibility = View.GONE
+            visibility = View.INVISIBLE
         }
         root.addView(sessionText, lp(top = 8))
 
@@ -214,7 +214,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Eneida 0.8.0", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Eneida 0.8.1", 11f, TEXT_SOFT), lp(top = 22))
         return scroll
     }
 
@@ -488,7 +488,7 @@ class MainActivity : Activity() {
         rxRateValue.text = formatRate(state.rxRate)
         txRateValue.text = formatRate(state.txRate)
 
-        sessionText.visibility = if (connected) View.VISIBLE else View.GONE
+        sessionText.visibility = if (connected) View.VISIBLE else View.INVISIBLE
         sessionText.text = "Сеанс " + formatDuration(state.sessionSeconds)
 
         val msg = state.message.orEmpty()
