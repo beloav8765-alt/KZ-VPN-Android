@@ -10,19 +10,27 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y ca-certificates curl git openssl caddy docker.io docker-compose-plugin
-
-systemctl enable --now docker
-
 if [ -z "$DOMAIN" ]; then
-  IP="$(hostname -I | awk '{print $1}')"
+  IP="$(curl -4fsS --max-time 10 https://api.ipify.org || true)"
+  if [ -z "$IP" ]; then
+    IP="$(hostname -I | awk '{print $1}')"
+  fi
   if [ -z "$IP" ]; then
     echo "Could not detect public IP. Pass a domain as the first argument."
     exit 1
   fi
   DOMAIN="${IP//./-}.sslip.io"
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl git openssl caddy docker.io docker-compose-v2
+
+systemctl enable --now docker
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Docker Compose v2 is not available."
+  exit 1
 fi
 
 if [ -d "$INSTALL_DIR/.git" ]; then
@@ -33,7 +41,14 @@ else
   git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 fi
 
-ADMIN_TOKEN="$(openssl rand -base64 36 | tr -d '\n' | tr '/+' '_-')"
+if [ -f "$INSTALL_DIR/control-plane/.env" ]; then
+  ADMIN_TOKEN="$(grep '^ENEIDA_ADMIN_TOKEN=' "$INSTALL_DIR/control-plane/.env" | head -n1 | cut -d= -f2- || true)"
+else
+  ADMIN_TOKEN=""
+fi
+if [ -z "$ADMIN_TOKEN" ]; then
+  ADMIN_TOKEN="$(openssl rand -base64 36 | tr -d '\n' | tr '/+' '_-')"
+fi
 
 cat > "$INSTALL_DIR/control-plane/.env" <<EOF
 ENEIDA_ADMIN_TOKEN=$ADMIN_TOKEN
@@ -63,6 +78,7 @@ $DOMAIN {
     reverse_proxy 127.0.0.1:8080
 }
 EOF
+
 caddy validate --config /etc/caddy/Caddyfile
 systemctl enable --now caddy
 systemctl restart caddy
@@ -72,15 +88,33 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 443/tcp >/dev/null || true
 fi
 
+echo "Waiting for Eneida Control HTTPS..."
+for i in $(seq 1 30); do
+  if curl -fsS --max-time 5 "https://$DOMAIN/health" >/tmp/eneida-health.json 2>/dev/null; then
+    break
+  fi
+  sleep 2
+done
+
+if ! curl -fsS --max-time 10 "https://$DOMAIN/health" >/tmp/eneida-health.json 2>/dev/null; then
+  echo
+  echo "Eneida Control container is installed, but HTTPS health check failed."
+  echo "Check ports 80/443 and run:"
+  echo "  systemctl status caddy --no-pager"
+  echo "  docker compose -f $INSTALL_DIR/control-plane/docker-compose.yml ps"
+  exit 2
+fi
+
 echo
 echo "========================================"
-echo "Eneida Control installed"
+echo "Eneida Control is online"
 echo "Admin: https://$DOMAIN/admin"
 echo "API:   https://$DOMAIN"
 echo
-echo "ADMIN TOKEN (save it now):"
+echo "ADMIN TOKEN (save it securely):"
 echo "$ADMIN_TOKEN"
 echo "========================================"
 echo
-echo "The token is stored in:"
-echo "$INSTALL_DIR/control-plane/.env"
+echo "Health:"
+cat /tmp/eneida-health.json
+echo
