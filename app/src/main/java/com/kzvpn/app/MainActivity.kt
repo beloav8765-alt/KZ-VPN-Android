@@ -1,7 +1,13 @@
 package com.kzvpn.app
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -14,6 +20,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
@@ -41,6 +48,8 @@ class MainActivity : Activity() {
     private var subscriptionActive = !api.enabled
     private var provisioning = false
     private var routeWatchJob: Job? = null
+    private var powerPulseAnimator: AnimatorSet? = null
+    private var lastVisualState: VisualState? = null
 
     private lateinit var status: TextView
     private lateinit var statusHint: TextView
@@ -53,6 +62,7 @@ class MainActivity : Activity() {
     private lateinit var txRateValue: TextView
     private lateinit var message: TextView
     private lateinit var connectButton: Button
+    private lateinit var connectingSpinner: ProgressBar
     private lateinit var powerRing: FrameLayout
     private lateinit var serversButton: Button
     private lateinit var paymentButton: Button
@@ -150,13 +160,30 @@ class MainActivity : Activity() {
             background = circleDrawable(PRIMARY, PRIMARY)
             setPadding(dp(12), dp(18), dp(12), dp(18))
             elevation = dp(8).toFloat()
-            setOnClickListener { handlePowerTap() }
+            setOnClickListener {
+                animatePowerTap()
+                handlePowerTap()
+            }
         }
 
         powerRing.addView(
             connectButton,
             FrameLayout.LayoutParams(dp(174), dp(174), Gravity.CENTER)
         )
+
+        connectingSpinner = ProgressBar(this).apply {
+            isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(Color.WHITE)
+            visibility = View.INVISIBLE
+            alpha = 0f
+        }
+        powerRing.addView(
+            connectingSpinner,
+            FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                topMargin = dp(34)
+            }
+        )
+
         root.addView(
             powerRing,
             LinearLayout.LayoutParams(dp(210), dp(210)).apply {
@@ -225,7 +252,7 @@ class MainActivity : Activity() {
         }
         root.addView(message, lp(top = 14))
 
-        root.addView(label("Eneida 0.9.1", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("Eneida 0.9.2", 11f, TEXT_SOFT), lp(top = 22))
         return scroll
     }
 
@@ -502,19 +529,31 @@ class MainActivity : Activity() {
     private fun render(state: VpnController.UiState) {
         val connected = state.connectionStatus == VpnController.ConnectionStatus.CONNECTED
         val disconnected = state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED
+        val visualState = when {
+            provisioning -> VisualState.CONNECTING
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> VisualState.CONNECTING
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> VisualState.CONNECTED
+            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> VisualState.DISCONNECTING
+            else -> VisualState.DISCONNECTED
+        }
 
-        status.text = when {
+        val nextStatus = when {
             provisioning -> "Настройка VPN…"
             state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED -> "VPN отключён"
             state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
             state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "Соединение защищено"
             else -> "Отключение…"
         }
+        crossfadeText(status, nextStatus)
         status.setTextColor(if (connected) SUCCESS else TEXT_DARK)
 
-        statusHint.text = when {
+        val nextHint = when {
             connected -> "Интернет-соединение защищено"
             provisioning -> "Подбираем доступный сервер Eneida"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTING ->
+                "Устанавливаем защищённое соединение…"
+            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING ->
+                "Завершаем защищённое соединение…"
             api.enabled && subscriptionKnown && !subscriptionActive ->
                 "Для подключения нужна активная подписка"
             api.enabled && !subscriptionKnown ->
@@ -525,6 +564,9 @@ class MainActivity : Activity() {
                 "Добавьте VPN-сервер для подключения"
             else -> "Нажмите кнопку, чтобы включить защиту"
         }
+        crossfadeText(statusHint, nextHint)
+
+        updateConnectionAnimation(visualState)
 
         if (api.enabled) {
             val selectedName = selectedRegionName()
@@ -583,7 +625,7 @@ class MainActivity : Activity() {
         rxRateValue.text = formatRate(state.rxRate)
         txRateValue.text = formatRate(state.txRate)
 
-        sessionText.visibility = if (connected) View.VISIBLE else View.INVISIBLE
+        updateSessionVisibility(connected)
         sessionText.text = "Сеанс " + formatDuration(state.sessionSeconds)
 
         val msg = state.message.orEmpty()
@@ -614,6 +656,163 @@ class MainActivity : Activity() {
         return if (parts.size == 3) {
             parts[2] + "." + parts[1] + "." + parts[0]
         } else ""
+    }
+
+    private fun animatePowerTap() {
+        connectButton.animate().cancel()
+        connectButton.animate()
+            .scaleX(0.96f)
+            .scaleY(0.96f)
+            .setDuration(90)
+            .withEndAction {
+                connectButton.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(140)
+                    .start()
+            }
+            .start()
+    }
+
+    private fun crossfadeText(view: TextView, value: String) {
+        if (view.text.toString() == value) return
+        view.animate().cancel()
+        view.animate()
+            .alpha(0f)
+            .setDuration(90)
+            .withEndAction {
+                view.text = value
+                view.animate()
+                    .alpha(1f)
+                    .setDuration(150)
+                    .start()
+            }
+            .start()
+    }
+
+    private fun updateSessionVisibility(visible: Boolean) {
+        if (visible) {
+            if (sessionText.visibility != View.VISIBLE) {
+                sessionText.alpha = 0f
+                sessionText.visibility = View.VISIBLE
+                sessionText.animate().alpha(1f).setDuration(220).start()
+            }
+        } else if (sessionText.visibility == View.VISIBLE) {
+            sessionText.animate().cancel()
+            sessionText.animate()
+                .alpha(0f)
+                .setDuration(140)
+                .withEndAction {
+                    sessionText.visibility = View.INVISIBLE
+                    sessionText.alpha = 1f
+                }
+                .start()
+        } else {
+            sessionText.visibility = View.INVISIBLE
+            sessionText.alpha = 1f
+        }
+    }
+
+    private fun updateConnectionAnimation(state: VisualState) {
+        if (lastVisualState == state) return
+        val previous = lastVisualState
+        lastVisualState = state
+
+        when (state) {
+            VisualState.CONNECTING -> {
+                showConnectingSpinner()
+                startPowerPulse()
+            }
+            VisualState.DISCONNECTING -> {
+                showConnectingSpinner()
+                startPowerPulse()
+            }
+            VisualState.CONNECTED -> {
+                stopPowerPulse()
+                hideConnectingSpinner()
+                if (previous == VisualState.CONNECTING) {
+                    animateConnectionSuccess()
+                }
+            }
+            VisualState.DISCONNECTED -> {
+                stopPowerPulse()
+                hideConnectingSpinner()
+            }
+        }
+    }
+
+    private fun showConnectingSpinner() {
+        connectButton.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
+        connectingSpinner.visibility = View.VISIBLE
+        connectingSpinner.animate().cancel()
+        connectingSpinner.animate()
+            .alpha(1f)
+            .setDuration(180)
+            .start()
+    }
+
+    private fun hideConnectingSpinner() {
+        connectingSpinner.animate().cancel()
+        connectingSpinner.animate()
+            .alpha(0f)
+            .setDuration(140)
+            .withEndAction {
+                connectingSpinner.visibility = View.INVISIBLE
+            }
+            .start()
+        connectButton.setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_power, 0, 0)
+    }
+
+    private fun startPowerPulse() {
+        powerPulseAnimator?.cancel()
+
+        val scaleX = ObjectAnimator.ofFloat(powerRing, View.SCALE_X, 1f, 1.055f).apply {
+            duration = 900
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+        }
+        val scaleY = ObjectAnimator.ofFloat(powerRing, View.SCALE_Y, 1f, 1.055f).apply {
+            duration = 900
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+        }
+        val alpha = ObjectAnimator.ofFloat(powerRing, View.ALPHA, 1f, 0.78f).apply {
+            duration = 900
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+        }
+
+        powerPulseAnimator = AnimatorSet().apply {
+            playTogether(scaleX, scaleY, alpha)
+            start()
+        }
+    }
+
+    private fun stopPowerPulse() {
+        powerPulseAnimator?.cancel()
+        powerPulseAnimator = null
+        powerRing.animate().cancel()
+        powerRing.scaleX = 1f
+        powerRing.scaleY = 1f
+        powerRing.alpha = 1f
+    }
+
+    private fun animateConnectionSuccess() {
+        powerRing.animate().cancel()
+        powerRing.scaleX = 0.98f
+        powerRing.scaleY = 0.98f
+        powerRing.animate()
+            .scaleX(1.035f)
+            .scaleY(1.035f)
+            .setDuration(180)
+            .withEndAction {
+                powerRing.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(220)
+                    .start()
+            }
+            .start()
     }
 
     private fun circleDrawable(fill: Int, stroke: Int): GradientDrawable =
@@ -662,6 +861,13 @@ class MainActivity : Activity() {
             index++
         } while (value >= 1024 && index < units.lastIndex)
         return String.format(Locale.US, "%.1f %s", value, units[index])
+    }
+
+    private enum class VisualState {
+        DISCONNECTED,
+        CONNECTING,
+        CONNECTED,
+        DISCONNECTING
     }
 
     companion object {
