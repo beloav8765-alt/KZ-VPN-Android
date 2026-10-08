@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "KzVpn"
-include(":app")
+rootProject.name = "EneidaUiPrototype"
+include(":eneidaUi")
