@@ -40,14 +40,23 @@ jobs:
         shell: bash
         run: gradle --no-daemon --console=plain :eneidaUi:assembleDebug
 
+      - name: Verify launcher metadata
+        shell: bash
+        run: |
+          APK="eneidaUi/build/outputs/apk/debug/eneidaUi-debug.apk"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          grep -F "package: name='dev.eneida.prototype.desktop.v2'" apk-badging.txt
+          grep -F "launchable-activity: name='dev.eneida.prototype.MainActivity'" apk-badging.txt
+
       - name: Package prototype APK
         shell: bash
-        run: cp eneidaUi/build/outputs/apk/debug/eneidaUi-debug.apk Eneida-UI-S25-Ultra-Prototype.apk
+        run: cp eneidaUi/build/outputs/apk/debug/eneidaUi-debug.apk Eneida-Desktop-S25-Ultra-v2.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Eneida-UI-S25-Ultra-Prototype
-          path: Eneida-UI-S25-Ultra-Prototype.apk
+          name: Eneida-Desktop-S25-Ultra-v2
+          path: Eneida-Desktop-S25-Ultra-v2.apk
           if-no-files-found: error
           retention-days: 14
