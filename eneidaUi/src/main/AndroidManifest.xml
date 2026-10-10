@@ -6,7 +6,7 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
-            android:name=".MainActivityV4"
+            android:name=".MainActivityV5"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:exported="true"
             android:screenOrientation="landscape"
