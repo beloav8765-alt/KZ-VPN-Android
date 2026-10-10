@@ -46,17 +46,17 @@ jobs:
           APK="eneidaUi/build/outputs/apk/debug/eneidaUi-debug.apk"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
-          grep -F "package: name='dev.eneida.prototype.desktop.v4'" apk-badging.txt
-          grep -F "launchable-activity: name='dev.eneida.prototype.MainActivityV4'" apk-badging.txt
+          grep -F "package: name='dev.eneida.prototype.desktop.v5'" apk-badging.txt
+          grep -F "launchable-activity: name='dev.eneida.prototype.MainActivityV5'" apk-badging.txt
 
       - name: Package prototype APK
         shell: bash
-        run: cp eneidaUi/build/outputs/apk/debug/eneidaUi-debug.apk Eneida-Desktop-S25-Ultra-v4.apk
+        run: cp eneidaUi/build/outputs/apk/debug/eneidaUi-debug.apk Eneida-Desktop-S25-Ultra-v5.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Eneida-Desktop-S25-Ultra-v4
-          path: Eneida-Desktop-S25-Ultra-v4.apk
+          name: Eneida-Desktop-S25-Ultra-v5
+          path: Eneida-Desktop-S25-Ultra-v5.apk
           if-no-files-found: error
           retention-days: 14
