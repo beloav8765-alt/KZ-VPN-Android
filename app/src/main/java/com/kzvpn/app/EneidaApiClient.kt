@@ -154,21 +154,25 @@ class EneidaApiClient {
             }
         }
 
-        val code = connection.responseCode
-        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-        val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
 
-        if (code !in 200..299) {
-            val detail = runCatching {
-                JSONObject(text).optString("detail")
-            }.getOrNull()
-            throw EneidaApiException(
-                code = code,
-                message = detail?.ifBlank { null } ?: "Ошибка Eneida Control: $code"
-            )
+            if (code !in 200..299) {
+                val detail = runCatching {
+                    JSONObject(text).optString("detail")
+                }.getOrNull()
+                throw EneidaApiException(
+                    code = code,
+                    message = detail?.ifBlank { null } ?: "Ошибка Eneida Control: $code"
+                )
+            }
+
+            return JSONObject(text)
+        } finally {
+            connection.disconnect()
         }
-
-        return JSONObject(text)
     }
 }
 
