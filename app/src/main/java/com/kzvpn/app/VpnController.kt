@@ -21,7 +21,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
 
@@ -222,17 +221,7 @@ class VpnController(context: Context) {
         scope.launch {
             operationMutex.withLock {
                 runCatching {
-                    val rawBytes = input.use { stream ->
-                        val output = ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        while (true) {
-                            val count = stream.read(buffer)
-                            if (count == -1) break
-                            require(output.size() + count <= MAX_CONFIG_SIZE) { "Файл слишком большой" }
-                            output.write(buffer, 0, count)
-                        }
-                        output.toByteArray()
-                    }
+                    val rawBytes = VpnConfigInput.readBounded(input)
 
                     val bytes = normalizeConfigBytes(rawBytes)
                     Config.parse(ByteArrayInputStream(bytes))
@@ -269,7 +258,7 @@ class VpnController(context: Context) {
     ): Result<Unit> = withContext(Dispatchers.IO) {
         operationMutex.withLock {
             runCatching {
-                require(bytes.size <= MAX_CONFIG_SIZE) { "Конфигурация слишком большая" }
+                require(bytes.size <= VpnConfigInput.MAX_CONFIG_SIZE) { "Конфигурация слишком большая" }
                 val normalized = normalizeConfigBytes(bytes)
                 Config.parse(ByteArrayInputStream(normalized))
                 val endpoint = extractEndpoint(normalized)
@@ -595,7 +584,6 @@ class VpnController(context: Context) {
         private const val TUNNEL_NAME = "eneida"
         private const val MANAGED_PROFILE_NAME = "Eneida Auto"
         private const val MANAGED_PROFILE_ID_KEY = "active_managed_profile_id"
-        private const val MAX_CONFIG_SIZE = 1_048_576
         private val ENDPOINT_REGEX = Regex("(?im)^\\s*Endpoint\\s*=\\s*(.+)$")
     }
 }
