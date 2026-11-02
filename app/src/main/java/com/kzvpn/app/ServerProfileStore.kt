@@ -142,7 +142,7 @@ class ServerProfileStore(context: Context) {
                 val iv = ByteArray(ivSize).also { input.readFully(it) }
 
                 val encryptedSize = input.readInt()
-                require(encryptedSize in 1..1_048_576)
+                require(encryptedSize in 1..(VpnConfigInput.MAX_CONFIG_SIZE + 16))
                 val encrypted = ByteArray(encryptedSize).also { input.readFully(it) }
 
                 val cipher = Cipher.getInstance(TRANSFORMATION)
