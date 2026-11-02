@@ -146,15 +146,15 @@ class EneidaApiClient {
         connection.readTimeout = 15000
         connection.setRequestProperty("Accept", "application/json")
 
-        if (body != null) {
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.outputStream.use { output ->
-                output.write(body.toByteArray(Charsets.UTF_8))
-            }
-        }
-
         try {
+            if (body != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.outputStream.use { output ->
+                    output.write(body.toByteArray(Charsets.UTF_8))
+                }
+            }
+
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
