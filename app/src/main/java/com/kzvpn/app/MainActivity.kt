@@ -1,7 +1,5 @@
 package com.kzvpn.app
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
@@ -19,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -69,6 +68,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        EneidaTheme.prepareWindow(this)
         setContentView(buildUi())
 
         uiScope.launch {
@@ -89,6 +89,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        stopPowerPulse()
         uiScope.cancel()
         super.onDestroy()
     }
@@ -99,206 +100,218 @@ class MainActivity : Activity() {
             setBackgroundColor(BG)
             overScrollMode = View.OVER_SCROLL_NEVER
         }
-
+        EneidaTheme.applyInsets(scroll)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22), dp(20), dp(22), dp(28))
-            setBackgroundColor(BG)
+            setPadding(dp(24), dp(18), dp(24), dp(24))
         }
-        scroll.addView(
-            root,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+        scroll.addView(root, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
 
-        fun label(value: String, size: Float, color: Int, bold: Boolean = false): TextView =
-            TextView(this).apply {
-                text = value
-                textSize = size
-                setTextColor(color)
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                if (bold) setTypeface(typeface, Typeface.BOLD)
-            }
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(icon(R.drawable.ic_eneida_mark, 46), LinearLayout.LayoutParams(dp(46), dp(46)))
+        val brand = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), 0, 0, 0)
+        }
+        brand.addView(label("Eneida", 25f, TEXT_PRIMARY, true, Gravity.START))
+        brand.addView(label("Личный VPN", 11f, TEXT_MUTED, false, Gravity.START), lp(top = 2))
+        header.addView(brand, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(label(if (BuildConfig.BUILD_TYPE == "preview") "PREVIEW" else "VPN", 10f, PRIMARY, true).apply {
+            letterSpacing = 0.12f
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            background = roundedDrawable(EneidaTheme.ACCENT_SURFACE, EneidaTheme.ACCENT_SURFACE, dp(20).toFloat())
+        })
+        root.addView(header, lp())
 
-        root.addView(label("Eneida", 31f, TEXT_DARK, true), lp())
-        root.addView(label("Личный VPN", 14f, TEXT_MUTED), lp(top = 5))
-
-        status = label("VPN отключён", 23f, TEXT_DARK, true)
-        root.addView(status, lp(top = 24))
-
-        statusHint = label("Подключитесь, чтобы защитить интернет-соединение", 13f, TEXT_MUTED)
-        statusHint.setPadding(dp(10), 0, dp(10), 0)
+        status = label("VPN отключён", 25f, TEXT_PRIMARY, true)
+        root.addView(status, lp(top = 28))
+        statusHint = label("Выберите сервер и подключитесь", 13f, TEXT_MUTED)
+        statusHint.maxLines = 2
         root.addView(statusHint, lp(top = 8))
-
-        sessionText = label("Сеанс 00:00:00", 12f, TEXT_SOFT, true).apply {
+        sessionText = label("Сеанс 00:00:00", 12f, PRIMARY).apply {
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            setPadding(dp(12), dp(5), dp(12), dp(5))
+            background = roundedDrawable(EneidaTheme.ACCENT_SURFACE, EneidaTheme.ACCENT_SURFACE, dp(16).toFloat())
             visibility = View.INVISIBLE
         }
-        root.addView(sessionText, lp(top = 8))
+        root.addView(sessionText, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(12) })
 
-        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(22)))
-
-        powerRing = FrameLayout(this).apply {
-            background = circleDrawable(RING_IDLE, RING_IDLE)
-            elevation = dp(5).toFloat()
-        }
-
+        powerRing = FrameLayout(this).apply { background = connectionAura(false) }
+        powerRing.addView(FrameLayout(this).apply {
+            background = circleDrawable(Color.TRANSPARENT, BORDER)
+        }, FrameLayout.LayoutParams(dp(190), dp(190), Gravity.CENTER))
         connectButton = Button(this).apply {
-            text = "ПОДКЛЮЧИТЬ"
-            textSize = 18f
-            setTextColor(Color.WHITE)
+            text = "Подключить"
+            textSize = 14f
+            setTextColor(EneidaTheme.ON_ACCENT)
             gravity = Gravity.CENTER
             isAllCaps = false
-            setTypeface(typeface, Typeface.BOLD)
+            setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL))
             setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_power, 0, 0)
-            compoundDrawablePadding = dp(10)
+            compoundDrawablePadding = dp(15)
+            backgroundTintList = null
+            compoundDrawableTintList = ColorStateList.valueOf(EneidaTheme.ON_ACCENT)
             stateListAnimator = null
             isEnabled = false
             background = circleDrawable(PRIMARY, PRIMARY)
-            setPadding(dp(12), dp(18), dp(12), dp(18))
-            elevation = dp(8).toFloat()
+            setPadding(dp(10), dp(19), dp(10), dp(19))
             setOnClickListener {
                 animatePowerTap()
                 handlePowerTap()
             }
         }
-
-        powerRing.addView(
-            connectButton,
-            FrameLayout.LayoutParams(dp(174), dp(174), Gravity.CENTER)
-        )
-
+        powerRing.addView(connectButton, FrameLayout.LayoutParams(dp(156), dp(156), Gravity.CENTER))
         connectingSpinner = ProgressBar(this).apply {
             isIndeterminate = true
-            indeterminateTintList = ColorStateList.valueOf(Color.WHITE)
+            indeterminateTintList = ColorStateList.valueOf(PRIMARY)
             visibility = View.INVISIBLE
             alpha = 0f
         }
-        powerRing.addView(
-            connectingSpinner,
-            FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                topMargin = dp(34)
-            }
-        )
-
-        root.addView(
-            powerRing,
-            LinearLayout.LayoutParams(dp(210), dp(210)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-        )
-
-        root.addView(Space(this), LinearLayout.LayoutParams(1, dp(24)))
+        powerRing.addView(connectingSpinner,
+            FrameLayout.LayoutParams(dp(34), dp(34), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                topMargin = dp(68)
+            })
+        root.addView(powerRing, LinearLayout.LayoutParams(dp(224), dp(224)).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(8)
+        })
 
         val serverCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(15), dp(18), dp(15))
-            background = roundedDrawable(CARD, BORDER, dp(18).toFloat())
-            elevation = dp(2).toFloat()
-            setOnClickListener {
-                if (api.enabled) openRegions() else openServers()
-            }
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(17), dp(14), dp(17))
+            background = roundedDrawable(CARD, BORDER, dp(22).toFloat())
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Выбор VPN-сервера"
+            setOnClickListener { if (api.enabled) openRegions() else openServers() }
         }
-        serverCard.addView(label("СЕРВЕР", 11f, TEXT_SOFT, true).apply { gravity = Gravity.START })
-        serverValue = label("Автоматически", 17f, TEXT_DARK, true).apply { gravity = Gravity.START }
-        serverCard.addView(serverValue, lp(top = 6))
-        serverHint = label("Eneida выберет доступный сервер", 12f, TEXT_MUTED).apply { gravity = Gravity.START }
-        serverCard.addView(serverHint, lp(top = 5))
+        serverCard.addView(icon(R.drawable.ic_server, 23).apply {
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = roundedDrawable(EneidaTheme.ACCENT_SURFACE, EneidaTheme.ACCENT_SURFACE, dp(14).toFloat())
+        }, LinearLayout.LayoutParams(dp(46), dp(46)))
+        val serverInfo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(13), 0, dp(6), 0)
+        }
+        serverInfo.addView(label("СЕРВЕР", 10f, TEXT_SOFT, true, Gravity.START).apply { letterSpacing = 0.12f })
+        serverValue = label("Выберите сервер", 17f, TEXT_PRIMARY, true, Gravity.START)
+        serverInfo.addView(serverValue, lp(top = 5))
+        serverHint = label("Нажмите для настройки", 11f, TEXT_MUTED, false, Gravity.START)
+        serverInfo.addView(serverHint, lp(top = 5))
+        serverCard.addView(serverInfo, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        serverCard.addView(icon(R.drawable.ic_chevron, 18, TEXT_SOFT), LinearLayout.LayoutParams(dp(20), dp(20)))
         root.addView(serverCard, lp())
 
-        val statsRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+        val stats = LinearLayout(this)
+        val receive = statCard("ПОЛУЧЕНО", R.drawable.ic_download, EneidaTheme.BLUE)
+        rxValue = receive.second
+        rxRateValue = receive.third
+        stats.addView(receive.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        stats.addView(Space(this), LinearLayout.LayoutParams(dp(12), 1))
+        val send = statCard("ОТПРАВЛЕНО", R.drawable.ic_upload, PRIMARY)
+        txValue = send.second
+        txRateValue = send.third
+        stats.addView(send.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(stats, lp(top = 12))
+
+        val shortcuts = LinearLayout(this)
+        serversButton = secondaryButton("Серверы", R.drawable.ic_server) { openServers() }
+        if (!api.enabled) {
+            shortcuts.addView(serversButton, LinearLayout.LayoutParams(0, dp(54), 1f))
+            shortcuts.addView(Space(this), LinearLayout.LayoutParams(dp(12), 1))
         }
-
-        val rxCard = statCard("ПОЛУЧЕНО")
-        rxValue = rxCard.second
-        rxRateValue = rxCard.third
-        statsRow.addView(rxCard.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-        statsRow.addView(Space(this), LinearLayout.LayoutParams(dp(10), 1))
-
-        val txCard = statCard("ОТПРАВЛЕНО")
-        txValue = txCard.second
-        txRateValue = txCard.third
-        statsRow.addView(txCard.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-        root.addView(statsRow, lp(top = 12))
-
-        serversButton = secondaryButton("Серверы") { openServers() }.apply {
-            visibility = if (api.enabled) View.GONE else View.VISIBLE
-        }
-        root.addView(serversButton, lp(top = 18))
-
-        paymentButton = secondaryButton("Подписка и оплата") {
-            openPayment()
-        }.apply {
-            visibility = if (api.enabled) View.VISIBLE else View.GONE
-        }
-        root.addView(paymentButton, lp(top = if (api.enabled) 18 else 0))
-
-        val settingsButton = secondaryButton("Постоянная защита") {
+        val protection = secondaryButton("Защита", R.drawable.ic_shield) {
             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
         }
-        root.addView(settingsButton, lp(top = 10))
+        protection.contentDescription = "Постоянная защита: настройки VPN Android"
+        shortcuts.addView(protection, LinearLayout.LayoutParams(0, dp(54), 1f))
+        root.addView(shortcuts, lp(top = 16))
+        paymentButton = secondaryButton("Подписка и оплата", R.drawable.ic_card) { openPayment() }.apply {
+            visibility = if (api.enabled) View.VISIBLE else View.GONE
+        }
+        root.addView(paymentButton, lp(top = if (api.enabled) 12 else 0))
 
-        message = label("", 13f, ERROR, true).apply {
+        message = label("", 13f, ERROR).apply {
             background = roundedDrawable(ERROR_BG, ERROR_BORDER, dp(16).toFloat())
             setPadding(dp(14), dp(12), dp(14), dp(12))
             visibility = View.GONE
         }
         root.addView(message, lp(top = 14))
-
-        root.addView(label("Eneida 0.9.2", 11f, TEXT_SOFT), lp(top = 22))
+        root.addView(label("ENEIDA  ·  " + BuildConfig.VERSION_NAME, 10f, TEXT_SOFT).apply {
+            letterSpacing = 0.1f
+        }, lp(top = 22))
         return scroll
     }
 
-    private fun statCard(title: String): Triple<LinearLayout, TextView, TextView> {
+    private fun label(value: String, size: Float, color: Int, bold: Boolean = false, alignment: Int = Gravity.CENTER): TextView =
+        TextView(this).apply {
+            text = value
+            textSize = size
+            setTextColor(color)
+            gravity = alignment
+            includeFontPadding = false
+            typeface = Typeface.create(if (bold) "sans-serif-medium" else "sans-serif", Typeface.NORMAL)
+        }
+
+    private fun icon(resource: Int, size: Int, color: Int = PRIMARY): ImageView =
+        ImageView(this).apply {
+            setImageResource(resource)
+            imageTintList = ColorStateList.valueOf(color)
+            minimumWidth = dp(size)
+            minimumHeight = dp(size)
+            contentDescription = null
+        }
+
+    private fun statCard(title: String, resource: Int, color: Int): Triple<LinearLayout, TextView, TextView> {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(14), dp(12), dp(14))
-            background = roundedDrawable(CARD, BORDER, dp(16).toFloat())
+            setPadding(dp(16), dp(15), dp(16), dp(15))
+            background = roundedDrawable(CARD, BORDER, dp(20).toFloat())
         }
-        val titleView = TextView(this).apply {
-            text = title
-            textSize = 10f
-            setTextColor(TEXT_SOFT)
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        val valueView = TextView(this).apply {
-            text = "0 B"
-            textSize = 17f
-            setTextColor(TEXT_DARK)
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        val rateView = TextView(this).apply {
-            text = "0 B/с"
-            textSize = 11f
-            setTextColor(TEXT_MUTED)
-            gravity = Gravity.CENTER
-        }
-        card.addView(titleView)
-        card.addView(valueView, lp(top = 6))
-        card.addView(rateView, lp(top = 4))
-        return Triple(card, valueView, rateView)
+        val heading = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        heading.addView(icon(resource, 14, color), LinearLayout.LayoutParams(dp(14), dp(14)))
+        heading.addView(label(title, 10f, TEXT_MUTED, true, Gravity.START).apply {
+            letterSpacing = 0.06f
+            setPadding(dp(7), 0, 0, 0)
+        })
+        card.addView(heading)
+        val value = label("0 B", 23f, TEXT_PRIMARY, true, Gravity.START)
+        card.addView(value, lp(top = 11))
+        val rate = label("0 B/с", 11f, color, false, Gravity.START)
+        card.addView(rate, lp(top = 5))
+        return Triple(card, value, rate)
     }
 
-    private fun secondaryButton(title: String, action: () -> Unit): Button =
+    private fun secondaryButton(title: String, resource: Int, action: () -> Unit): Button =
         Button(this).apply {
             text = title
-            textSize = 15f
-            setTextColor(TEXT_DARK)
+            textSize = 13f
+            setTextColor(TEXT_MUTED)
             isAllCaps = false
+            setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL))
             stateListAnimator = null
+            backgroundTintList = null
             background = roundedDrawable(CARD, BORDER, dp(16).toFloat())
-            setPadding(dp(16), dp(11), dp(16), dp(11))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setCompoundDrawablesRelativeWithIntrinsicBounds(resource, 0, 0, 0)
+            compoundDrawableTintList = ColorStateList.valueOf(PRIMARY)
+            compoundDrawablePadding = dp(8)
             setOnClickListener { action() }
+        }
+
+    private fun connectionAura(active: Boolean): GradientDrawable =
+        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, if (active) {
+            intArrayOf(Color.argb(48, 120, 228, 203), Color.argb(8, 120, 228, 203), Color.TRANSPARENT)
+        } else {
+            intArrayOf(Color.argb(22, 120, 228, 203), Color.argb(4, 120, 228, 203), Color.TRANSPARENT)
+        }).apply {
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            gradientRadius = dp(112).toFloat()
         }
 
     private fun handlePowerTap() {
@@ -548,7 +561,7 @@ class MainActivity : Activity() {
             else -> "Отключение…"
         }
         crossfadeText(status, nextStatus)
-        status.setTextColor(if (connected) SUCCESS else TEXT_DARK)
+        status.setTextColor(if (connected) SUCCESS else TEXT_PRIMARY)
 
         val nextHint = when {
             connected -> "Туннель WireGuard активен"
@@ -599,29 +612,32 @@ class MainActivity : Activity() {
         }
 
         connectButton.text = when {
-            provisioning -> "НАСТРОЙКА…"
-            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "ОТКЛЮЧИТЬ"
-            state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> "ПОДКЛЮЧЕНИЕ…"
-            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> "ОТКЛЮЧЕНИЕ…"
-            api.enabled && subscriptionKnown && !subscriptionActive -> "ПОДПИСКА"
-            else -> "ПОДКЛЮЧИТЬ"
+            provisioning -> "Настройка…"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "Отключить"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
+            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> "Отключение…"
+            api.enabled && subscriptionKnown && !subscriptionActive -> "Подписка"
+            else -> "Подключить"
         }
 
+        val buttonInk = when {
+            !connectButton.isEnabled -> TEXT_SOFT
+            connected -> PRIMARY
+            else -> EneidaTheme.ON_ACCENT
+        }
+        connectButton.setTextColor(buttonInk)
+        connectButton.compoundDrawableTintList = ColorStateList.valueOf(buttonInk)
+        connectButton.contentDescription = when {
+            connected -> "Отключить VPN"
+            !state.configured && !api.enabled -> "Добавьте сервер для подключения VPN"
+            else -> connectButton.text
+        }
         connectButton.background = when {
-            !connectButton.isEnabled -> circleDrawable(DISABLED, DISABLED)
-            connected -> circleDrawable(PRIMARY_DARK, PRIMARY_DARK)
+            !connectButton.isEnabled -> circleDrawable(DISABLED, BORDER)
+            connected -> circleDrawable(EneidaTheme.ACCENT_SURFACE, PRIMARY)
             else -> circleDrawable(PRIMARY, PRIMARY)
         }
-
-        powerRing.background = when {
-            connected -> circleDrawable(RING_CONNECTED, RING_CONNECTED)
-            provisioning -> circleDrawable(RING_IDLE, RING_IDLE)
-            api.enabled && subscriptionKnown && !subscriptionActive ->
-                circleDrawable(RING_DISABLED, RING_DISABLED)
-            !state.configured && !api.enabled ->
-                circleDrawable(RING_DISABLED, RING_DISABLED)
-            else -> circleDrawable(RING_IDLE, RING_IDLE)
-        }
+        powerRing.background = connectionAura(connected || provisioning)
 
         rxValue.text = formatBytes(state.rxBytes)
         txValue.text = formatBytes(state.txBytes)
@@ -745,6 +761,7 @@ class MainActivity : Activity() {
     }
 
     private fun showConnectingSpinner() {
+        connectButton.setPadding(dp(10), dp(68), dp(10), dp(19))
         connectButton.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
         connectingSpinner.visibility = View.VISIBLE
         connectingSpinner.animate().cancel()
@@ -755,6 +772,7 @@ class MainActivity : Activity() {
     }
 
     private fun hideConnectingSpinner() {
+        connectButton.setPadding(dp(10), dp(19), dp(10), dp(19))
         connectingSpinner.animate().cancel()
         connectingSpinner.animate()
             .alpha(0f)
@@ -876,21 +894,17 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_VPN = 1001
 
-        private val BG = Color.rgb(239, 243, 246)
-        private val CARD = Color.rgb(250, 252, 253)
-        private val PRIMARY = Color.rgb(46, 98, 138)
-        private val PRIMARY_DARK = Color.rgb(35, 78, 112)
-        private val BORDER = Color.rgb(199, 211, 219)
-        private val TEXT_DARK = Color.rgb(48, 73, 91)
-        private val TEXT_MUTED = Color.rgb(105, 124, 138)
-        private val TEXT_SOFT = Color.rgb(148, 162, 172)
-        private val SUCCESS = Color.rgb(45, 125, 104)
-        private val RING_IDLE = Color.rgb(213, 228, 239)
-        private val RING_CONNECTED = Color.rgb(205, 232, 222)
-        private val RING_DISABLED = Color.rgb(226, 232, 236)
-        private val ERROR = Color.rgb(181, 56, 56)
-        private val ERROR_BG = Color.rgb(255, 240, 240)
-        private val ERROR_BORDER = Color.rgb(245, 190, 190)
-        private val DISABLED = Color.rgb(192, 205, 214)
+        private val BG = EneidaTheme.BACKGROUND
+        private val CARD = EneidaTheme.SURFACE
+        private val PRIMARY = EneidaTheme.ACCENT
+        private val BORDER = EneidaTheme.BORDER
+        private val TEXT_PRIMARY = EneidaTheme.TEXT_PRIMARY
+        private val TEXT_MUTED = EneidaTheme.TEXT_MUTED
+        private val TEXT_SOFT = EneidaTheme.TEXT_SOFT
+        private val SUCCESS = EneidaTheme.ACCENT
+        private val ERROR = EneidaTheme.ERROR
+        private val ERROR_BG = EneidaTheme.ERROR_SURFACE
+        private val ERROR_BORDER = EneidaTheme.ERROR_BORDER
+        private val DISABLED = EneidaTheme.SURFACE_RAISED
     }
 }

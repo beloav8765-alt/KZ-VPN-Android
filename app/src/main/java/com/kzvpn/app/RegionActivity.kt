@@ -1,7 +1,6 @@
 package com.kzvpn.app
 
 import android.app.Activity
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -26,6 +25,7 @@ class RegionActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        EneidaTheme.prepareWindow(this)
         setContentView(buildUi())
         loadRegions()
     }
@@ -40,6 +40,7 @@ class RegionActivity : Activity() {
             isFillViewport = true
             setBackgroundColor(BG)
         }
+        EneidaTheme.applyInsets(scroll)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(28))
@@ -57,8 +58,9 @@ class RegionActivity : Activity() {
         header.addView(Button(this).apply {
             text = "‹"
             textSize = 30f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             stateListAnimator = null
+            backgroundTintList = null
             background = rounded(BG, BG)
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(56), dp(52)))
@@ -66,7 +68,7 @@ class RegionActivity : Activity() {
         header.addView(TextView(this).apply {
             text = "Выбор региона"
             textSize = 25f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         }, LinearLayout.LayoutParams(0, dp(52), 1f))
@@ -178,7 +180,7 @@ class RegionActivity : Activity() {
             addView(TextView(this@RegionActivity).apply {
                 text = title
                 textSize = 18f
-                setTextColor(TEXT_DARK)
+                setTextColor(TEXT_PRIMARY)
                 setTypeface(typeface, Typeface.BOLD)
             })
             addView(TextView(this@RegionActivity).apply {
@@ -209,12 +211,12 @@ class RegionActivity : Activity() {
         const val KEY_CODE = "selected_region_code"
         const val KEY_NAME = "selected_region_name"
 
-        private val BG = Color.rgb(239, 243, 246)
-        private val CARD = Color.rgb(250, 252, 253)
-        private val BORDER = Color.rgb(199, 211, 219)
-        private val ACTIVE_BG = Color.rgb(235, 246, 242)
-        private val ACTIVE_BORDER = Color.rgb(171, 210, 198)
-        private val TEXT_DARK = Color.rgb(48, 73, 91)
-        private val TEXT_MUTED = Color.rgb(105, 124, 138)
+        private val BG = EneidaTheme.BACKGROUND
+        private val CARD = EneidaTheme.SURFACE
+        private val BORDER = EneidaTheme.BORDER
+        private val ACTIVE_BG = EneidaTheme.ACCENT_SURFACE
+        private val ACTIVE_BORDER = EneidaTheme.ACCENT
+        private val TEXT_PRIMARY = EneidaTheme.TEXT_PRIMARY
+        private val TEXT_MUTED = EneidaTheme.TEXT_MUTED
     }
 }

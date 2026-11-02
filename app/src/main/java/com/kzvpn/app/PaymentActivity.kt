@@ -52,6 +52,7 @@ class PaymentActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        EneidaTheme.prepareWindow(this)
         setContentView(buildUi())
         refreshSubscription()
     }
@@ -67,6 +68,7 @@ class PaymentActivity : Activity() {
             isFillViewport = true
             setBackgroundColor(BG)
         }
+        EneidaTheme.applyInsets(scroll)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(28))
@@ -81,8 +83,9 @@ class PaymentActivity : Activity() {
         header.addView(Button(this).apply {
             text = "‹"
             textSize = 30f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             stateListAnimator = null
+            backgroundTintList = null
             background = rounded(BG, BG)
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(56), dp(52)))
@@ -90,7 +93,7 @@ class PaymentActivity : Activity() {
         header.addView(TextView(this).apply {
             text = "Подписка"
             textSize = 26f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         }, LinearLayout.LayoutParams(0, dp(52), 1f))
@@ -99,7 +102,7 @@ class PaymentActivity : Activity() {
 
         root.addView(centered("Eneida VPN", 14f, TEXT_MUTED, false), lp(2))
 
-        subscriptionStatus = centered("Проверяем подписку…", 16f, TEXT_DARK, true).apply {
+        subscriptionStatus = centered("Проверяем подписку…", 16f, TEXT_PRIMARY, true).apply {
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = rounded(CARD, BORDER)
         }
@@ -113,7 +116,7 @@ class PaymentActivity : Activity() {
         plan.addView(TextView(this).apply {
             text = "30 дней"
             textSize = 21f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
         })
         plan.addView(TextView(this).apply {
@@ -141,7 +144,7 @@ class PaymentActivity : Activity() {
             background = rounded(CARD, BORDER)
             visibility = View.GONE
         }
-        amountText = centered("", 20f, TEXT_DARK, true)
+        amountText = centered("", 20f, TEXT_PRIMARY, true)
         paymentCard.addView(amountText)
 
         qrImage = ImageView(this)
@@ -153,7 +156,7 @@ class PaymentActivity : Activity() {
         addressText = centered("", 12f, TEXT_MUTED, false).apply { setTextIsSelectable(true) }
         paymentCard.addView(addressText, lp(10))
 
-        confirmationText = centered("Ожидаем оплату", 14f, TEXT_DARK, true)
+        confirmationText = centered("Ожидаем оплату", 14f, TEXT_PRIMARY, true)
         paymentCard.addView(confirmationText, lp(12))
 
         paymentCard.addView(secondaryButton("Скопировать адрес") {
@@ -175,7 +178,7 @@ class PaymentActivity : Activity() {
             background = rounded(ERROR_BG, ERROR_BORDER)
         }
         root.addView(message, lp(12))
-        root.addView(centered("Eneida 0.8.0", 11f, TEXT_SOFT, false), lp(18))
+        root.addView(centered("Eneida " + BuildConfig.VERSION_NAME, 11f, TEXT_SOFT, false), lp(18))
         return scroll
     }
 
@@ -192,7 +195,7 @@ class PaymentActivity : Activity() {
                     val active = json.optBoolean("active", false)
                     val validUntil = json.optString("valid_until")
                     subscriptionStatus.text = if (active) "Подписка активна до " + formatDate(validUntil) else "Подписка не активна"
-                    subscriptionStatus.setTextColor(if (active) SUCCESS else TEXT_DARK)
+                    subscriptionStatus.setTextColor(if (active) SUCCESS else TEXT_PRIMARY)
                 }
                 .onFailure { subscriptionStatus.text = "Не удалось проверить подписку" }
         }
@@ -313,10 +316,11 @@ class PaymentActivity : Activity() {
     private fun primaryButton(title: String, action: () -> Unit) = Button(this).apply {
         text = title
         textSize = 15f
-        setTextColor(Color.WHITE)
+        setTextColor(EneidaTheme.ON_ACCENT)
         isAllCaps = false
         setTypeface(typeface, Typeface.BOLD)
         stateListAnimator = null
+        backgroundTintList = null
         background = rounded(PRIMARY, PRIMARY)
         setOnClickListener { action() }
     }
@@ -324,10 +328,11 @@ class PaymentActivity : Activity() {
     private fun secondaryButton(title: String, action: () -> Unit) = Button(this).apply {
         text = title
         textSize = 14f
-        setTextColor(TEXT_DARK)
+        setTextColor(TEXT_PRIMARY)
         isAllCaps = false
         stateListAnimator = null
-        background = rounded(Color.WHITE, BORDER)
+        backgroundTintList = null
+        background = rounded(EneidaTheme.SURFACE_RAISED, BORDER)
         setOnClickListener { action() }
     }
 
@@ -346,16 +351,16 @@ class PaymentActivity : Activity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     companion object {
-        private val BG = Color.rgb(239, 243, 246)
-        private val CARD = Color.rgb(250, 252, 253)
-        private val PRIMARY = Color.rgb(46, 98, 138)
-        private val BORDER = Color.rgb(199, 211, 219)
-        private val TEXT_DARK = Color.rgb(48, 73, 91)
-        private val TEXT_MUTED = Color.rgb(105, 124, 138)
-        private val TEXT_SOFT = Color.rgb(148, 162, 172)
-        private val SUCCESS = Color.rgb(45, 125, 104)
-        private val ERROR = Color.rgb(181, 56, 56)
-        private val ERROR_BG = Color.rgb(255, 240, 240)
-        private val ERROR_BORDER = Color.rgb(245, 190, 190)
+        private val BG = EneidaTheme.BACKGROUND
+        private val CARD = EneidaTheme.SURFACE
+        private val PRIMARY = EneidaTheme.ACCENT
+        private val BORDER = EneidaTheme.BORDER
+        private val TEXT_PRIMARY = EneidaTheme.TEXT_PRIMARY
+        private val TEXT_MUTED = EneidaTheme.TEXT_MUTED
+        private val TEXT_SOFT = EneidaTheme.TEXT_SOFT
+        private val SUCCESS = EneidaTheme.ACCENT
+        private val ERROR = EneidaTheme.ERROR
+        private val ERROR_BG = EneidaTheme.ERROR_SURFACE
+        private val ERROR_BORDER = EneidaTheme.ERROR_BORDER
     }
 }

@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.database.Cursor
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -35,6 +34,7 @@ class ServersActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        EneidaTheme.prepareWindow(this)
         setContentView(buildUi())
 
         uiScope.launch {
@@ -55,6 +55,7 @@ class ServersActivity : Activity() {
             setBackgroundColor(BG)
         }
 
+        EneidaTheme.applyInsets(scroll)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(28))
@@ -76,9 +77,10 @@ class ServersActivity : Activity() {
         val back = Button(this).apply {
             text = "‹"
             textSize = 30f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             background = roundedDrawable(BG, BG, dp(10).toFloat())
             stateListAnimator = null
+            backgroundTintList = null
             setOnClickListener { finish() }
         }
         header.addView(back, LinearLayout.LayoutParams(dp(56), dp(52)))
@@ -86,7 +88,7 @@ class ServersActivity : Activity() {
         val title = TextView(this).apply {
             text = "Серверы"
             textSize = 26f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         }
@@ -105,10 +107,11 @@ class ServersActivity : Activity() {
         val addButton = Button(this).apply {
             text = "+ Добавить сервер"
             textSize = 16f
-            setTextColor(Color.WHITE)
+            setTextColor(EneidaTheme.ON_ACCENT)
             isAllCaps = false
             setTypeface(typeface, Typeface.BOLD)
             stateListAnimator = null
+            backgroundTintList = null
             background = roundedDrawable(PRIMARY, PRIMARY, dp(16).toFloat())
             setOnClickListener { openConfigPicker() }
         }
@@ -201,7 +204,7 @@ class ServersActivity : Activity() {
         val name = TextView(this).apply {
             text = server.name
             textSize = 18f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
         }
         nameRow.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -257,10 +260,11 @@ class ServersActivity : Activity() {
         Button(this).apply {
             text = title
             textSize = 11f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             isAllCaps = false
             stateListAnimator = null
-            background = roundedDrawable(Color.WHITE, BORDER, dp(12).toFloat())
+            backgroundTintList = null
+            background = roundedDrawable(EneidaTheme.SURFACE_RAISED, BORDER, dp(12).toFloat())
             setPadding(dp(4), 0, dp(4), 0)
             setOnClickListener { action() }
         }
@@ -354,14 +358,14 @@ class ServersActivity : Activity() {
     companion object {
         private const val REQ_CONFIG = 2001
 
-        private val BG = Color.rgb(239, 243, 246)
-        private val CARD = Color.rgb(250, 252, 253)
-        private val PRIMARY = Color.rgb(46, 98, 138)
-        private val BORDER = Color.rgb(199, 211, 219)
-        private val ACTIVE_BG = Color.rgb(235, 246, 242)
-        private val ACTIVE_BORDER = Color.rgb(171, 210, 198)
-        private val TEXT_DARK = Color.rgb(48, 73, 91)
-        private val TEXT_MUTED = Color.rgb(105, 124, 138)
-        private val SUCCESS = Color.rgb(45, 125, 104)
+        private val BG = EneidaTheme.BACKGROUND
+        private val CARD = EneidaTheme.SURFACE
+        private val PRIMARY = EneidaTheme.ACCENT
+        private val BORDER = EneidaTheme.BORDER
+        private val ACTIVE_BG = EneidaTheme.ACCENT_SURFACE
+        private val ACTIVE_BORDER = EneidaTheme.ACCENT
+        private val TEXT_PRIMARY = EneidaTheme.TEXT_PRIMARY
+        private val TEXT_MUTED = EneidaTheme.TEXT_MUTED
+        private val SUCCESS = EneidaTheme.ACCENT
     }
 }

@@ -4,9 +4,9 @@
     <application
         android:name="com.kzvpn.app.KzVpnApp"
         android:allowBackup="false"
-        android:icon="@drawable/ic_vpn"
-        android:label="Eneida"
-        android:roundIcon="@drawable/ic_vpn"
+        android:icon="@mipmap/ic_launcher"
+        android:label="${appLabel}"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.KzVpn"
         android:usesCleartextTraffic="false">
