@@ -201,19 +201,19 @@ class VpnController(context: Context) {
     fun connectFromAlwaysOn() {
         scope.launch {
             operationMutex.withLock {
-            if (_state.value.connectionStatus != ConnectionStatus.DISCONNECTED) return@withLock
-            val currentConfig = config ?: restoreProfilesAndActiveConfig(showError = false) ?: return@withLock
-            _state.update { it.copy(connectionStatus = ConnectionStatus.CONNECTING, message = null) }
-            runCatching {
-                backend.setState(tunnel, Tunnel.State.UP, currentConfig)
-            }.onFailure { error ->
-                _state.update {
-                    it.copy(
-                        connectionStatus = ConnectionStatus.DISCONNECTED,
-                        message = humanizeError(error)
-                    )
+                if (_state.value.connectionStatus != ConnectionStatus.DISCONNECTED) return@withLock
+                val currentConfig = config ?: restoreProfilesAndActiveConfig(showError = false) ?: return@withLock
+                _state.update { it.copy(connectionStatus = ConnectionStatus.CONNECTING, message = null) }
+                runCatching {
+                    backend.setState(tunnel, Tunnel.State.UP, currentConfig)
+                }.onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            connectionStatus = ConnectionStatus.DISCONNECTED,
+                            message = humanizeError(error)
+                        )
+                    }
                 }
-            }
             }
         }
     }
@@ -221,44 +221,44 @@ class VpnController(context: Context) {
     fun importConfig(input: InputStream, suggestedName: String? = null) {
         scope.launch {
             operationMutex.withLock {
-            runCatching {
-                val rawBytes = input.use { stream ->
-                    val output = ByteArrayOutputStream()
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val count = stream.read(buffer)
-                        if (count == -1) break
-                        require(output.size() + count <= MAX_CONFIG_SIZE) { "Файл слишком большой" }
-                        output.write(buffer, 0, count)
+                runCatching {
+                    val rawBytes = input.use { stream ->
+                        val output = ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            val count = stream.read(buffer)
+                            if (count == -1) break
+                            require(output.size() + count <= MAX_CONFIG_SIZE) { "Файл слишком большой" }
+                            output.write(buffer, 0, count)
+                        }
+                        output.toByteArray()
                     }
-                    output.toByteArray()
+
+                    val bytes = normalizeConfigBytes(rawBytes)
+                    Config.parse(ByteArrayInputStream(bytes))
+
+                    val endpoint = extractEndpoint(bytes)
+                    val currentCount = serverStore.listServers().size
+                    val name = cleanServerName(suggestedName)
+                        ?: if (currentCount == 0) "Основной сервер" else "Сервер ${currentCount + 1}"
+
+                    val profile = serverStore.addServer(
+                        name = name,
+                        endpoint = endpoint,
+                        configBytes = bytes
+                    )
+                    // Keep the current tunnel/profile in sync while connected.
+                    val isConnected = _state.value.connectionStatus == ConnectionStatus.CONNECTED
+                    if (isConnected) refreshServerList() else loadServerIntoMemory(profile.id)
+
+                    _state.update {
+                        it.copy(message = if (isConnected) "Сервер добавлен. Выберите его для переключения." else "Сервер добавлен")
+                    }
+                }.onFailure { error ->
+                    _state.update {
+                        it.copy(message = "Ошибка конфигурации: ${describeError(error)}")
+                    }
                 }
-
-                val bytes = normalizeConfigBytes(rawBytes)
-                Config.parse(ByteArrayInputStream(bytes))
-
-                val endpoint = extractEndpoint(bytes)
-                val currentCount = serverStore.listServers().size
-                val name = cleanServerName(suggestedName)
-                    ?: if (currentCount == 0) "Основной сервер" else "Сервер ${currentCount + 1}"
-
-                val profile = serverStore.addServer(
-                    name = name,
-                    endpoint = endpoint,
-                    configBytes = bytes
-                )
-                // Keep the current tunnel/profile in sync while connected.
-                val isConnected = _state.value.connectionStatus == ConnectionStatus.CONNECTED
-                if (isConnected) refreshServerList() else loadServerIntoMemory(profile.id)
-
-                _state.update {
-                    it.copy(message = if (isConnected) "Сервер добавлен. Выберите его для переключения." else "Сервер добавлен")
-                }
-            }.onFailure { error ->
-                _state.update {
-                    it.copy(message = "Ошибка конфигурации: ${describeError(error)}")
-                }
-            }
             }
         }
     }
@@ -283,8 +283,9 @@ class VpnController(context: Context) {
                     endpoint = endpoint,
                     configBytes = normalized
                 )
+                val wasConnected = _state.value.connectionStatus == ConnectionStatus.CONNECTED
                 try {
-                    if (_state.value.connectionStatus == ConnectionStatus.CONNECTED) {
+                    if (wasConnected) {
                         _state.update { it.copy(connectionStatus = ConnectionStatus.DISCONNECTING) }
                         backend.setState(tunnel, Tunnel.State.DOWN, null)
                     }
@@ -296,6 +297,9 @@ class VpnController(context: Context) {
                     serverStore.deleteServer(profile.id)
                     if (previousActiveId != null) {
                         runCatching { loadServerIntoMemory(previousActiveId) }
+                    }
+                    if (wasConnected && _state.value.connectionStatus == ConnectionStatus.DISCONNECTING) {
+                        _state.update { it.copy(connectionStatus = ConnectionStatus.CONNECTED) }
                     }
                     throw error
                 }
@@ -317,53 +321,53 @@ class VpnController(context: Context) {
     fun selectServer(id: String) {
         scope.launch {
             operationMutex.withLock {
-            if (_state.value.activeServerId == id) return@withLock
+                if (_state.value.activeServerId == id) return@withLock
 
-            val wasConnected = _state.value.connectionStatus == ConnectionStatus.CONNECTED
-            if (wasConnected) {
-                _state.update { it.copy(connectionStatus = ConnectionStatus.DISCONNECTING, message = null) }
-                val downResult = runCatching {
-                    backend.setState(tunnel, Tunnel.State.DOWN, null)
-                }
-                if (downResult.isFailure) {
-                    _state.update {
-                        it.copy(
-                            connectionStatus = ConnectionStatus.CONNECTED,
-                            message = humanizeError(downResult.exceptionOrNull()!!)
-                        )
+                val wasConnected = _state.value.connectionStatus == ConnectionStatus.CONNECTED
+                if (wasConnected) {
+                    _state.update { it.copy(connectionStatus = ConnectionStatus.DISCONNECTING, message = null) }
+                    val downResult = runCatching {
+                        backend.setState(tunnel, Tunnel.State.DOWN, null)
                     }
-                    return@withLock
+                    if (downResult.isFailure) {
+                        _state.update {
+                            it.copy(
+                                connectionStatus = ConnectionStatus.CONNECTED,
+                                message = humanizeError(downResult.exceptionOrNull()!!)
+                            )
+                        }
+                        return@withLock
+                    }
                 }
-            }
 
-            runCatching {
-                loadServerIntoMemory(id)
-            }.onFailure { error ->
-                _state.update {
-                    it.copy(
-                        connectionStatus = ConnectionStatus.DISCONNECTED,
-                        message = "Не удалось выбрать сервер: ${describeError(error)}"
-                    )
-                }
-                return@withLock
-            }
-
-            if (wasConnected) {
-                val currentConfig = config ?: return@withLock
-                _state.update { it.copy(connectionStatus = ConnectionStatus.CONNECTING) }
                 runCatching {
-                    backend.setState(tunnel, Tunnel.State.UP, currentConfig)
+                    loadServerIntoMemory(id)
                 }.onFailure { error ->
                     _state.update {
                         it.copy(
                             connectionStatus = ConnectionStatus.DISCONNECTED,
-                            message = humanizeError(error)
+                            message = "Не удалось выбрать сервер: ${describeError(error)}"
                         )
                     }
+                    return@withLock
                 }
-            } else {
-                _state.update { it.copy(message = "Сервер выбран") }
-            }
+
+                if (wasConnected) {
+                    val currentConfig = config ?: return@withLock
+                    _state.update { it.copy(connectionStatus = ConnectionStatus.CONNECTING) }
+                    runCatching {
+                        backend.setState(tunnel, Tunnel.State.UP, currentConfig)
+                    }.onFailure { error ->
+                        _state.update {
+                            it.copy(
+                                connectionStatus = ConnectionStatus.DISCONNECTED,
+                                message = humanizeError(error)
+                            )
+                        }
+                    }
+                } else {
+                    _state.update { it.copy(message = "Сервер выбран") }
+                }
             }
         }
     }
@@ -371,11 +375,11 @@ class VpnController(context: Context) {
     fun renameServer(id: String, newName: String) {
         scope.launch {
             operationMutex.withLock {
-            val cleaned = newName.trim().take(40)
-            if (cleaned.isBlank()) return@withLock
-            serverStore.renameServer(id, cleaned)
-            refreshServerList()
-            _state.update { it.copy(message = "Сервер переименован") }
+                val cleaned = newName.trim().take(40)
+                if (cleaned.isBlank()) return@withLock
+                serverStore.renameServer(id, cleaned)
+                refreshServerList()
+                _state.update { it.copy(message = "Сервер переименован") }
             }
         }
     }
@@ -383,30 +387,30 @@ class VpnController(context: Context) {
     fun removeServer(id: String) {
         scope.launch {
             operationMutex.withLock {
-            val isActive = _state.value.activeServerId == id
-            if (isActive && _state.value.connectionStatus == ConnectionStatus.CONNECTED) {
-                val disconnected = runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
-                if (disconnected.isFailure) {
-                    _state.update { it.copy(message = "Не удалось отключить VPN перед удалением") }
+                val isActive = _state.value.activeServerId == id
+                if (isActive && _state.value.connectionStatus == ConnectionStatus.CONNECTED) {
+                    val disconnected = runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+                    if (disconnected.isFailure) {
+                        _state.update { it.copy(message = "Не удалось отключить VPN перед удалением") }
+                        return@withLock
+                    }
+                }
+
+                serverStore.deleteServer(id)
+
+                val remaining = serverStore.listServers()
+                if (remaining.isEmpty()) {
+                    config = null
+                    _state.value = UiState(message = "Сервер удалён")
                     return@withLock
                 }
-            }
 
-            serverStore.deleteServer(id)
+                val nextId = if (isActive) remaining.first().id
+                else serverStore.getActiveId()?.takeIf { active -> remaining.any { it.id == active } }
+                    ?: remaining.first().id
 
-            val remaining = serverStore.listServers()
-            if (remaining.isEmpty()) {
-                config = null
-                _state.value = UiState(message = "Сервер удалён")
-                return@withLock
-            }
-
-            val nextId = if (isActive) remaining.first().id
-            else serverStore.getActiveId()?.takeIf { active -> remaining.any { it.id == active } }
-                ?: remaining.first().id
-
-            loadServerIntoMemory(nextId, remaining)
-            _state.update { it.copy(message = "Сервер удалён") }
+                loadServerIntoMemory(nextId, remaining)
+                _state.update { it.copy(message = "Сервер удалён") }
             }
         }
     }
@@ -429,43 +433,69 @@ class VpnController(context: Context) {
     fun connect() {
         scope.launch {
             operationMutex.withLock {
-            if (_state.value.connectionStatus != ConnectionStatus.DISCONNECTED) return@withLock
-            val currentConfig = config ?: restoreProfilesAndActiveConfig(showError = false)
-            if (currentConfig == null) {
-                _state.update { it.copy(message = "Сначала добавьте VPN-сервер") }
-                return@withLock
-            }
+                if (_state.value.connectionStatus != ConnectionStatus.DISCONNECTED) return@withLock
+                val currentConfig = config ?: restoreProfilesAndActiveConfig(showError = false)
+                if (currentConfig == null) {
+                    _state.update { it.copy(message = "Сначала добавьте VPN-сервер") }
+                    return@withLock
+                }
 
-            _state.update { it.copy(connectionStatus = ConnectionStatus.CONNECTING, message = null) }
-            runCatching {
-                backend.setState(tunnel, Tunnel.State.UP, currentConfig)
-            }.onFailure { error ->
-                _state.update {
-                    it.copy(
-                        connectionStatus = ConnectionStatus.DISCONNECTED,
-                        message = humanizeError(error)
-                    )
+                _state.update { it.copy(connectionStatus = ConnectionStatus.CONNECTING, message = null) }
+                runCatching {
+                    backend.setState(tunnel, Tunnel.State.UP, currentConfig)
+                }.onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            connectionStatus = ConnectionStatus.DISCONNECTED,
+                            message = humanizeError(error)
+                        )
+                    }
                 }
             }
-            }
+        }
+    }
+
+    /**
+     * Wait for the tunnel to stop before replacing a managed server.
+     * Unlike disconnect(), this suspends until the backend has responded.
+     */
+    suspend fun disconnectForReprovision(): Boolean = withContext(Dispatchers.IO) {
+        operationMutex.withLock {
+            if (_state.value.connectionStatus == ConnectionStatus.DISCONNECTED) return@withLock true
+            val wasConnected = _state.value.connectionStatus == ConnectionStatus.CONNECTED
+            _state.update { it.copy(connectionStatus = ConnectionStatus.DISCONNECTING, message = null) }
+            runCatching {
+                backend.setState(tunnel, Tunnel.State.DOWN, null)
+            }.fold(
+                onSuccess = { true },
+                onFailure = { error ->
+                    _state.update {
+                        it.copy(
+                            connectionStatus = if (wasConnected) ConnectionStatus.CONNECTED else ConnectionStatus.DISCONNECTED,
+                            message = humanizeError(error)
+                        )
+                    }
+                    false
+                }
+            )
         }
     }
 
     fun disconnect() {
         scope.launch {
             operationMutex.withLock {
-            if (_state.value.connectionStatus == ConnectionStatus.DISCONNECTED) return@withLock
-            _state.update { it.copy(connectionStatus = ConnectionStatus.DISCONNECTING, message = null) }
-            runCatching {
-                backend.setState(tunnel, Tunnel.State.DOWN, null)
-            }.onFailure { error ->
-                _state.update {
-                    it.copy(
-                        connectionStatus = ConnectionStatus.CONNECTED,
-                        message = humanizeError(error)
-                    )
+                if (_state.value.connectionStatus == ConnectionStatus.DISCONNECTED) return@withLock
+                _state.update { it.copy(connectionStatus = ConnectionStatus.DISCONNECTING, message = null) }
+                runCatching {
+                    backend.setState(tunnel, Tunnel.State.DOWN, null)
+                }.onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            connectionStatus = ConnectionStatus.CONNECTED,
+                            message = humanizeError(error)
+                        )
+                    }
                 }
-            }
             }
         }
     }
