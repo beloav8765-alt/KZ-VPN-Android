@@ -48,6 +48,13 @@ jobs:
         shell: bash
         run: python -m py_compile agent/agent.py
 
+      - name: Check VPS diagnostic collector
+        shell: bash
+        run: |
+          python -m py_compile tools/diagnose-vpn.py
+          python tools/diagnose-vpn.py --seconds 1 > "$RUNNER_TEMP/eneida-diagnostics.json"
+          python -m json.tool "$RUNNER_TEMP/eneida-diagnostics.json" > /dev/null
+
       - name: Build APK
         shell: bash
         env:
