@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -49,7 +52,7 @@ jobs:
         shell: bash
         env:
           ENEIDA_API_BASE_URL: ${{ vars.ENEIDA_API_BASE_URL }}
-        run: gradle --no-daemon --console=plain :app:assembleDebug
+        run: gradle --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug
 
       - name: Rename APK
         shell: bash
