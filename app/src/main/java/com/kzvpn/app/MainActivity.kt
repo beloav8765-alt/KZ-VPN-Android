@@ -452,10 +452,13 @@ class MainActivity : Activity() {
 
                 if (route.reprovision) {
                     controller.setMessage("Переключаемся на рабочий сервер…")
-                    controller.disconnect()
-                    delay(1_200)
-                    provisionManaged(connectAfter = true)
-                    delay(10_000)
+                    // Wait for the backend confirmation; a fixed delay can race the next connect.
+                    if (controller.disconnectForReprovision()) {
+                        provisionManaged(connectAfter = true)
+                        delay(10_000)
+                    } else {
+                        controller.setMessage("Не удалось отключить VPN для смены сервера")
+                    }
                 }
             }
         }
@@ -541,14 +544,14 @@ class MainActivity : Activity() {
             provisioning -> "Настройка VPN…"
             state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED -> "VPN отключён"
             state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
-            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "Соединение защищено"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "VPN подключён"
             else -> "Отключение…"
         }
         crossfadeText(status, nextStatus)
         status.setTextColor(if (connected) SUCCESS else TEXT_DARK)
 
         val nextHint = when {
-            connected -> "Интернет-соединение защищено"
+            connected -> "Туннель WireGuard активен"
             provisioning -> "Подбираем доступный сервер Eneida"
             state.connectionStatus == VpnController.ConnectionStatus.CONNECTING ->
                 "Устанавливаем защищённое соединение…"
