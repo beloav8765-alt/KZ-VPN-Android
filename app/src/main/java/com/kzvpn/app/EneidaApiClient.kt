@@ -120,6 +120,21 @@ class EneidaApiClient {
         identity: DeviceIdentityStore.Identity,
         provisioning: Provisioning
     ): ByteArray {
+        // Control API data must never inject additional WireGuard configuration lines.
+        val values = listOf(
+            identity.privateKey,
+            provisioning.address,
+            provisioning.dns,
+            provisioning.serverPublicKey,
+            provisioning.endpoint,
+            provisioning.allowedIps
+        )
+        require(values.none { value -> value.any { it == '\r' || it == '\n' || it == '\u0000' } }) {
+            "Некорректные параметры VPN-сервера"
+        }
+        require(provisioning.mtu in 576..9000) { "Некорректный MTU сервера" }
+        require(provisioning.persistentKeepalive in 0..65535) { "Некорректный интервал Keepalive" }
+
         val text = buildString {
             appendLine("[Interface]")
             appendLine("PrivateKey = " + identity.privateKey)
