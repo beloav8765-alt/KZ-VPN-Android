@@ -43,6 +43,7 @@ android {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    testImplementation("junit:junit:4.13.2")
     implementation("com.wireguard.android:tunnel:1.0.20260102")
     implementation("com.google.zxing:core:3.5.3")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
