@@ -66,7 +66,7 @@ class VpnController(context: Context) {
 
     private var config: Config? = null
     private var statsJob: Job? = null
-    private var connectedAtMs: Long = 0L
+    @Volatile private var connectedAtMs: Long = 0L
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -503,16 +503,20 @@ class VpnController(context: Context) {
             var previousRx = 0L
             var previousTx = 0L
             var initialized = false
+            var previousSampleAtMs = 0L
 
             while (isActive) {
                 runCatching { backend.getStatistics(tunnel) }
                     .onSuccess { stats ->
                         val rx = stats.totalRx()
                         val tx = stats.totalTx()
-                        val rxRate = if (initialized) (rx - previousRx).coerceAtLeast(0L) else 0L
-                        val txRate = if (initialized) (tx - previousTx).coerceAtLeast(0L) else 0L
+                        val sampleAtMs = SystemClock.elapsedRealtime()
+                        val elapsedMs = (sampleAtMs - previousSampleAtMs).coerceAtLeast(1L)
+                        val rxRate = if (initialized) (rx - previousRx).coerceAtLeast(0L) * 1000L / elapsedMs else 0L
+                        val txRate = if (initialized) (tx - previousTx).coerceAtLeast(0L) * 1000L / elapsedMs else 0L
                         previousRx = rx
                         previousTx = tx
+                        previousSampleAtMs = sampleAtMs
                         initialized = true
 
                         val seconds = if (connectedAtMs > 0L)
