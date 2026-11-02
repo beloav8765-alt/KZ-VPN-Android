@@ -56,7 +56,7 @@ class SecureConfigStore(context: Context) {
                 require(ivSize in 12..32) { "Invalid IV" }
                 val iv = ByteArray(ivSize).also { input.readFully(it) }
                 val encryptedSize = input.readInt()
-                require(encryptedSize in 1..1_048_576) { "Invalid encrypted config size" }
+                require(encryptedSize in 1..(VpnConfigInput.MAX_CONFIG_SIZE + 16)) { "Invalid encrypted config size" }
                 val encrypted = ByteArray(encryptedSize).also { input.readFully(it) }
 
                 val cipher = Cipher.getInstance(TRANSFORMATION)
