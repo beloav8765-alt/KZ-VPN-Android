@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import re
+import struct
 import subprocess
 import time
 import xml.etree.ElementTree as ET
@@ -23,8 +24,14 @@ def hierarchy(name):
     return ET.fromstring(xml)
 
 
-def screenshot(name):
-    (OUTPUT / (name + ".png")).write_bytes(adb("exec-out", "screencap", "-p"))
+def screenshot(name, expected_size=None):
+    for attempt in range(4):
+        png = adb("exec-out", "screencap", "-p")
+        if expected_size is None or struct.unpack(">II", png[16:24]) == expected_size:
+            (OUTPUT / (name + ".png")).write_bytes(png)
+            return
+        time.sleep(0.5)
+    raise RuntimeError("Display did not settle before capture: " + name)
 
 
 def tap_text(value):
@@ -86,12 +93,14 @@ def main():
     adb("shell", "wm", "size", "720x1280")
     adb("shell", "wm", "density", "320")
     time.sleep(2)
-    screenshot("home-compact")
-    hierarchy("home-compact")
+    root = hierarchy("home-compact")
+    resource_point(root, "main_power")
+    screenshot("home-compact", (720, 1280))
     adb("shell", "settings", "put", "system", "font_scale", "1.6")
     time.sleep(2)
-    screenshot("home-large-text")
-    hierarchy("home-large-text")
+    root = hierarchy("home-large-text")
+    resource_point(root, "main_power")
+    screenshot("home-large-text", (720, 1280))
     for attempt in range(6):
         root = hierarchy("large-text-scroll")
         footer = next((n for n in root.iter("node") if n.get("resource-id", "").endswith("/main_footer")), None)
