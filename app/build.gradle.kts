@@ -13,13 +13,20 @@ android {
         applicationId = "com.kzvpn.app.v032"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "0.9.3"
+        versionCode = 22
+        versionName = "0.9.4"
         manifestPlaceholders["appLabel"] = "Eneida"
         buildConfigField("String", "CONTROL_API_BASE_URL", "\"" + eneidaApiBaseUrl.replace("\"", "\\\"") + "\"")
     }
 
     buildTypes {
+        create("effects") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".fx"
+            versionNameSuffix = "-fx"
+            manifestPlaceholders["appLabel"] = "Eneida FX"
+            matchingFallbacks += listOf("debug")
+        }
         create("preview") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".preview"

@@ -1,8 +1,5 @@
 package com.kzvpn.app
 
-import android.animation.AnimatorSet
-import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -16,10 +13,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
@@ -47,8 +42,6 @@ class MainActivity : Activity() {
     private var subscriptionActive = !api.enabled
     private var provisioning = false
     private var routeWatchJob: Job? = null
-    private var powerPulseAnimator: AnimatorSet? = null
-    private var lastVisualState: VisualState? = null
 
     private lateinit var status: TextView
     private lateinit var statusHint: TextView
@@ -60,9 +53,7 @@ class MainActivity : Activity() {
     private lateinit var rxRateValue: TextView
     private lateinit var txRateValue: TextView
     private lateinit var message: TextView
-    private lateinit var connectButton: Button
-    private lateinit var connectingSpinner: ProgressBar
-    private lateinit var powerRing: FrameLayout
+    private lateinit var powerButton: EneidaPowerButton
     private lateinit var serversButton: Button
     private lateinit var paymentButton: Button
 
@@ -78,18 +69,20 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        powerButton.setEffectsActive(true)
         refreshManagedAccess()
         startRouteWatch()
     }
 
     override fun onPause() {
+        powerButton.setEffectsActive(false)
         routeWatchJob?.cancel()
         routeWatchJob = null
         super.onPause()
     }
 
     override fun onDestroy() {
-        stopPowerPulse()
+        powerButton.stopEffects()
         uiScope.cancel()
         super.onDestroy()
     }
@@ -119,8 +112,17 @@ class MainActivity : Activity() {
         brand.addView(label("Eneida", 25f, TEXT_PRIMARY, true, Gravity.START))
         brand.addView(label("Личный VPN", 11f, TEXT_MUTED, false, Gravity.START), lp(top = 2))
         header.addView(brand, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(label(if (BuildConfig.BUILD_TYPE == "preview") "PREVIEW" else "VPN", 10f, PRIMARY, true).apply {
+        header.addView(label(when (BuildConfig.BUILD_TYPE) { "effects" -> "FX"; "preview" -> "PREVIEW"; else -> "VPN" }, 10f, PRIMARY, true).apply {
             letterSpacing = 0.12f
+            minimumWidth = dp(48)
+            minimumHeight = dp(40)
+            if (BuildConfig.BUILD_TYPE == "effects") {
+                contentDescription = "Показать визуальные эффекты кнопки"
+                isFocusable = true
+                setOnClickListener {
+                    startActivity(Intent().setClassName(this@MainActivity, "com.kzvpn.app.ButtonGalleryActivity"))
+                }
+            }
             setPadding(dp(12), dp(7), dp(12), dp(7))
             background = roundedDrawable(EneidaTheme.ACCENT_SURFACE, EneidaTheme.ACCENT_SURFACE, dp(20).toFloat())
         })
@@ -141,44 +143,13 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dp(12) })
 
-        powerRing = FrameLayout(this).apply { background = connectionAura(false) }
-        powerRing.addView(FrameLayout(this).apply {
-            background = circleDrawable(Color.TRANSPARENT, BORDER)
-        }, FrameLayout.LayoutParams(dp(190), dp(190), Gravity.CENTER))
-        connectButton = Button(this).apply {
-            text = "Подключить"
-            textSize = 14f
-            setTextColor(EneidaTheme.ON_ACCENT)
-            gravity = Gravity.CENTER
-            isAllCaps = false
-            setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL))
-            setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_power, 0, 0)
-            compoundDrawablePadding = dp(15)
-            backgroundTintList = null
-            compoundDrawableTintList = ColorStateList.valueOf(EneidaTheme.ON_ACCENT)
-            stateListAnimator = null
-            isEnabled = false
-            background = circleDrawable(PRIMARY, PRIMARY)
-            setPadding(dp(10), dp(19), dp(10), dp(19))
-            setOnClickListener {
-                animatePowerTap()
-                handlePowerTap()
-            }
+        powerButton = EneidaPowerButton(this).apply {
+            setOnClickListener { handlePowerTap() }
         }
-        powerRing.addView(connectButton, FrameLayout.LayoutParams(dp(156), dp(156), Gravity.CENTER))
-        connectingSpinner = ProgressBar(this).apply {
-            isIndeterminate = true
-            indeterminateTintList = ColorStateList.valueOf(PRIMARY)
-            visibility = View.INVISIBLE
-            alpha = 0f
-        }
-        powerRing.addView(connectingSpinner,
-            FrameLayout.LayoutParams(dp(34), dp(34), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                topMargin = dp(68)
-            })
-        root.addView(powerRing, LinearLayout.LayoutParams(dp(224), dp(224)).apply {
-            topMargin = dp(8)
-            bottomMargin = dp(8)
+        val buttonSize = (resources.configuration.screenWidthDp - 48).coerceIn(1, 304)
+        root.addView(powerButton, LinearLayout.LayoutParams(dp(buttonSize), dp(buttonSize)).apply {
+            topMargin = dp(2)
+            bottomMargin = dp(2)
         })
 
         val serverCard = LinearLayout(this).apply {
@@ -302,16 +273,6 @@ class MainActivity : Activity() {
             compoundDrawableTintList = ColorStateList.valueOf(PRIMARY)
             compoundDrawablePadding = dp(8)
             setOnClickListener { action() }
-        }
-
-    private fun connectionAura(active: Boolean): GradientDrawable =
-        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, if (active) {
-            intArrayOf(Color.argb(48, 120, 228, 203), Color.argb(8, 120, 228, 203), Color.TRANSPARENT)
-        } else {
-            intArrayOf(Color.argb(22, 120, 228, 203), Color.argb(4, 120, 228, 203), Color.TRANSPARENT)
-        }).apply {
-            gradientType = GradientDrawable.RADIAL_GRADIENT
-            gradientRadius = dp(112).toFloat()
         }
 
     private fun handlePowerTap() {
@@ -546,11 +507,11 @@ class MainActivity : Activity() {
         val connected = state.connectionStatus == VpnController.ConnectionStatus.CONNECTED
         val disconnected = state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTED
         val visualState = when {
-            provisioning -> VisualState.CONNECTING
-            state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> VisualState.CONNECTING
-            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> VisualState.CONNECTED
-            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> VisualState.DISCONNECTING
-            else -> VisualState.DISCONNECTED
+            provisioning -> EneidaPowerButton.Mode.CONNECTING
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> EneidaPowerButton.Mode.CONNECTING
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> EneidaPowerButton.Mode.CONNECTED
+            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> EneidaPowerButton.Mode.DISCONNECTING
+            else -> EneidaPowerButton.Mode.DISCONNECTED
         }
 
         val nextStatus = when {
@@ -582,8 +543,6 @@ class MainActivity : Activity() {
         }
         crossfadeText(statusHint, nextHint)
 
-        updateConnectionAnimation(visualState)
-
         if (api.enabled) {
             val selectedName = selectedRegionName()
             val selectedCode = selectedRegionCode()
@@ -603,7 +562,7 @@ class MainActivity : Activity() {
             }
         }
 
-        connectButton.isEnabled = when {
+        val buttonEnabled = when {
             provisioning -> false
             connected -> true
             !disconnected -> false
@@ -611,33 +570,18 @@ class MainActivity : Activity() {
             else -> state.configured
         }
 
-        connectButton.text = when {
+        val buttonLabel = when {
             provisioning -> "Настройка…"
-            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "Отключить"
+            state.connectionStatus == VpnController.ConnectionStatus.CONNECTED -> "Выключить"
             state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
-            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> "Отключение…"
+            state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> "Выключение…"
             api.enabled && subscriptionKnown && !subscriptionActive -> "Подписка"
-            else -> "Подключить"
+            else -> "Включить"
         }
-
-        val buttonInk = when {
-            !connectButton.isEnabled -> TEXT_SOFT
-            connected -> PRIMARY
-            else -> EneidaTheme.ON_ACCENT
+        powerButton.setVisualState(visualState, buttonLabel, buttonEnabled)
+        if (!state.configured && !api.enabled) {
+            powerButton.contentDescription = "Добавьте сервер для включения VPN"
         }
-        connectButton.setTextColor(buttonInk)
-        connectButton.compoundDrawableTintList = ColorStateList.valueOf(buttonInk)
-        connectButton.contentDescription = when {
-            connected -> "Отключить VPN"
-            !state.configured && !api.enabled -> "Добавьте сервер для подключения VPN"
-            else -> connectButton.text
-        }
-        connectButton.background = when {
-            !connectButton.isEnabled -> circleDrawable(DISABLED, BORDER)
-            connected -> circleDrawable(EneidaTheme.ACCENT_SURFACE, PRIMARY)
-            else -> circleDrawable(PRIMARY, PRIMARY)
-        }
-        powerRing.background = connectionAura(connected || provisioning)
 
         rxValue.text = formatBytes(state.rxBytes)
         txValue.text = formatBytes(state.txBytes)
@@ -675,22 +619,6 @@ class MainActivity : Activity() {
         return if (parts.size == 3) {
             parts[2] + "." + parts[1] + "." + parts[0]
         } else ""
-    }
-
-    private fun animatePowerTap() {
-        connectButton.animate().cancel()
-        connectButton.animate()
-            .scaleX(0.96f)
-            .scaleY(0.96f)
-            .setDuration(90)
-            .withEndAction {
-                connectButton.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(140)
-                    .start()
-            }
-            .start()
     }
 
     private fun crossfadeText(view: TextView, value: String) {
@@ -731,117 +659,6 @@ class MainActivity : Activity() {
             sessionText.alpha = 1f
         }
     }
-
-    private fun updateConnectionAnimation(state: VisualState) {
-        if (lastVisualState == state) return
-        val previous = lastVisualState
-        lastVisualState = state
-
-        when (state) {
-            VisualState.CONNECTING -> {
-                showConnectingSpinner()
-                startPowerPulse()
-            }
-            VisualState.DISCONNECTING -> {
-                showConnectingSpinner()
-                startPowerPulse()
-            }
-            VisualState.CONNECTED -> {
-                stopPowerPulse()
-                hideConnectingSpinner()
-                if (previous == VisualState.CONNECTING) {
-                    animateConnectionSuccess()
-                }
-            }
-            VisualState.DISCONNECTED -> {
-                stopPowerPulse()
-                hideConnectingSpinner()
-            }
-        }
-    }
-
-    private fun showConnectingSpinner() {
-        connectButton.setPadding(dp(10), dp(68), dp(10), dp(19))
-        connectButton.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
-        connectingSpinner.visibility = View.VISIBLE
-        connectingSpinner.animate().cancel()
-        connectingSpinner.animate()
-            .alpha(1f)
-            .setDuration(180)
-            .start()
-    }
-
-    private fun hideConnectingSpinner() {
-        connectButton.setPadding(dp(10), dp(19), dp(10), dp(19))
-        connectingSpinner.animate().cancel()
-        connectingSpinner.animate()
-            .alpha(0f)
-            .setDuration(140)
-            .withEndAction {
-                connectingSpinner.visibility = View.INVISIBLE
-            }
-            .start()
-        connectButton.setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_power, 0, 0)
-    }
-
-    private fun startPowerPulse() {
-        powerPulseAnimator?.cancel()
-
-        val scaleX = ObjectAnimator.ofFloat(powerRing, View.SCALE_X, 1f, 1.055f).apply {
-            duration = 900
-            repeatMode = ValueAnimator.REVERSE
-            repeatCount = ValueAnimator.INFINITE
-        }
-        val scaleY = ObjectAnimator.ofFloat(powerRing, View.SCALE_Y, 1f, 1.055f).apply {
-            duration = 900
-            repeatMode = ValueAnimator.REVERSE
-            repeatCount = ValueAnimator.INFINITE
-        }
-        val alpha = ObjectAnimator.ofFloat(powerRing, View.ALPHA, 1f, 0.78f).apply {
-            duration = 900
-            repeatMode = ValueAnimator.REVERSE
-            repeatCount = ValueAnimator.INFINITE
-        }
-
-        powerPulseAnimator = AnimatorSet().apply {
-            playTogether(scaleX, scaleY, alpha)
-            start()
-        }
-    }
-
-    private fun stopPowerPulse() {
-        powerPulseAnimator?.cancel()
-        powerPulseAnimator = null
-        powerRing.animate().cancel()
-        powerRing.scaleX = 1f
-        powerRing.scaleY = 1f
-        powerRing.alpha = 1f
-    }
-
-    private fun animateConnectionSuccess() {
-        powerRing.animate().cancel()
-        powerRing.scaleX = 0.98f
-        powerRing.scaleY = 0.98f
-        powerRing.animate()
-            .scaleX(1.035f)
-            .scaleY(1.035f)
-            .setDuration(180)
-            .withEndAction {
-                powerRing.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(220)
-                    .start()
-            }
-            .start()
-    }
-
-    private fun circleDrawable(fill: Int, stroke: Int): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(fill)
-            setStroke(dp(1), stroke)
-        }
 
     private fun roundedDrawable(fill: Int, stroke: Int, radius: Float): GradientDrawable =
         GradientDrawable().apply {
@@ -884,13 +701,6 @@ class MainActivity : Activity() {
         return String.format(Locale.US, "%.1f %s", value, units[index])
     }
 
-    private enum class VisualState {
-        DISCONNECTED,
-        CONNECTING,
-        CONNECTED,
-        DISCONNECTING
-    }
-
     companion object {
         private const val REQ_VPN = 1001
 
@@ -905,6 +715,5 @@ class MainActivity : Activity() {
         private val ERROR = EneidaTheme.ERROR
         private val ERROR_BG = EneidaTheme.ERROR_SURFACE
         private val ERROR_BORDER = EneidaTheme.ERROR_BORDER
-        private val DISABLED = EneidaTheme.SURFACE_RAISED
     }
 }

@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'app/src/main/**'
+      - 'app/src/effects/**'
       - 'app/build.gradle.kts'
       - 'tools/capture-design.py'
       - '.github/workflows/design-preview.yml'
@@ -31,10 +32,10 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
-      - name: Build separate preview APK
+      - name: Build effects APK
         run: |
-          gradle --no-daemon --console=plain :app:assemblePreview
-          cp app/build/outputs/apk/preview/app-preview.apk Eneida-0.9.3-preview.apk
+          gradle --no-daemon --console=plain :app:assembleEffects
+          cp app/build/outputs/apk/effects/app-effects.apk Eneida-0.9.4-fx.apk
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -55,9 +56,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Eneida-0.9.3-preview
+          name: Eneida-0.9.4-fx
           path: |
-            Eneida-0.9.3-preview.apk
+            Eneida-0.9.4-fx.apk
             artifacts/design/
           retention-days: 14
           if-no-files-found: error

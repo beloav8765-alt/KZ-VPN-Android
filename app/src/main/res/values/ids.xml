@@ -1,0 +1,4 @@
+<resources>
+    <item name="demo_power_off" type="id" />
+    <item name="demo_power_on" type="id" />
+</resources>
