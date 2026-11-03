@@ -195,8 +195,8 @@ class EneidaPowerButton(context: Context) : View(context) {
             intArrayOf(Color.rgb(34, 79, 69), Color.rgb(19, 56, 47), Color.rgb(10, 39, 33)),
             floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
         haloPaint.shader = RadialGradient(cx, cy, radius * 1.28f,
-            intArrayOf(Color.TRANSPARENT, Color.argb(8, 120, 228, 203),
-                Color.argb(100, 120, 228, 203), Color.TRANSPARENT),
+            intArrayOf(Color.argb(0, 120, 228, 203), Color.argb(8, 120, 228, 203),
+                Color.argb(100, 120, 228, 203), Color.argb(0, 120, 228, 203)),
             floatArrayOf(0f, 0.55f, 0.77f, 1f), Shader.TileMode.CLAMP)
         shadowPaint.shader = RadialGradient(cx, cy + radius * 0.035f, radius * 1.08f,
             intArrayOf(Color.argb(95, 0, 0, 0), Color.argb(60, 0, 0, 0), Color.TRANSPARENT),
@@ -221,7 +221,8 @@ class EneidaPowerButton(context: Context) : View(context) {
         canvas.scale(scale, scale, cx, cy)
 
         haloPaint.alpha = (255f * if (unavailable) 0f else maxOf(mix, if (busy) 0.35f else 0f)).toInt()
-        canvas.drawCircle(cx, cy, radius * 1.28f, haloPaint)
+        // Let the shader fade to transparent; a circle edge can leave a hairline on some GPUs.
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), haloPaint)
         canvas.drawCircle(cx, cy + radius * 0.035f, radius * 1.08f, shadowPaint)
         bodyPaint.alpha = 255
         bodyPaint.shader = if (unavailable) null else offSurface
