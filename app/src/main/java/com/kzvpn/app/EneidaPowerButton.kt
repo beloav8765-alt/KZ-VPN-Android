@@ -194,13 +194,15 @@ class EneidaPowerButton(context: Context) : View(context) {
         onSurface = RadialGradient(cx - radius * 0.25f, cy - radius * 0.5f, radius * 1.8f,
             intArrayOf(Color.rgb(34, 79, 69), Color.rgb(19, 56, 47), Color.rgb(10, 39, 33)),
             floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
-        haloPaint.shader = RadialGradient(cx, cy, radius * 1.28f,
+        haloPaint.shader = RadialGradient(cx, cy, radius * 1.34f,
             intArrayOf(Color.argb(0, 120, 228, 203), Color.argb(8, 120, 228, 203),
-                Color.argb(100, 120, 228, 203), Color.argb(0, 120, 228, 203)),
-            floatArrayOf(0f, 0.55f, 0.77f, 1f), Shader.TileMode.CLAMP)
-        shadowPaint.shader = RadialGradient(cx, cy + radius * 0.035f, radius * 1.08f,
-            intArrayOf(Color.argb(95, 0, 0, 0), Color.argb(60, 0, 0, 0), Color.TRANSPARENT),
-            floatArrayOf(0f, 0.9f, 1f), Shader.TileMode.CLAMP)
+                Color.argb(100, 120, 228, 203), Color.argb(0, 120, 228, 203),
+                Color.argb(0, 120, 228, 203)),
+            floatArrayOf(0f, 0.52f, 0.735f, 0.92f, 1f), Shader.TileMode.CLAMP)
+        shadowPaint.shader = RadialGradient(cx, cy + radius * 0.035f, radius * 1.2f,
+            intArrayOf(Color.argb(95, 0, 0, 0), Color.argb(60, 0, 0, 0),
+                Color.TRANSPARENT, Color.TRANSPARENT),
+            floatArrayOf(0f, 0.78f, 0.88f, 1f), Shader.TileMode.CLAMP)
         val glyphRadius = diameter * 0.16f
         val glyphY = cy - diameter * 0.06f
         arcBounds.set(cx - glyphRadius, glyphY - glyphRadius, cx + glyphRadius, glyphY + glyphRadius)
@@ -221,8 +223,8 @@ class EneidaPowerButton(context: Context) : View(context) {
         canvas.scale(scale, scale, cx, cy)
 
         haloPaint.alpha = (255f * if (unavailable) 0f else maxOf(mix, if (busy) 0.35f else 0f)).toInt()
-        // Let the shader fade to transparent; a circle edge can leave a hairline on some GPUs.
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), haloPaint)
+        // Keep the gradient boundary outside the geometry to avoid a GPU hairline at its end stop.
+        canvas.drawCircle(cx, cy, radius * 1.25f, haloPaint)
         canvas.drawCircle(cx, cy + radius * 0.035f, radius * 1.08f, shadowPaint)
         bodyPaint.alpha = 255
         bodyPaint.shader = if (unavailable) null else offSurface

@@ -104,7 +104,6 @@ def main():
     time.sleep(0.8)
     adb("shell", "input", "tap", *off_point)
     time.sleep(2.2)
-    screenshot("button-connected")
     adb("shell", "input", "tap", *off_point)
     time.sleep(2.2)
     adb("shell", "input", "tap", *on_point)
