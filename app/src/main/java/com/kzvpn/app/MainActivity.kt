@@ -1,5 +1,6 @@
 package com.kzvpn.app
 
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -9,10 +10,13 @@ import android.graphics.drawable.GradientDrawable
 import android.net.VpnService
 import android.os.Bundle
 import android.provider.Settings
+import android.util.TypedValue
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -46,6 +50,8 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var statusHint: TextView
     private lateinit var sessionText: TextView
+    private lateinit var serverCard: LinearLayout
+    private var stackedCards = false
     private lateinit var serverValue: TextView
     private lateinit var serverHint: TextView
     private lateinit var rxValue: TextView
@@ -76,6 +82,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         powerButton.setEffectsActive(false)
+        listOf(status, statusHint).forEach { it.animate().cancel(); it.alpha = 1f }
         routeWatchJob?.cancel()
         routeWatchJob = null
         super.onPause()
@@ -88,134 +95,187 @@ class MainActivity : Activity() {
     }
 
     private fun buildUi(): View {
+        val config = resources.configuration
+        val wide = config.screenWidthDp >= 600 && config.screenWidthDp > config.screenHeightDp
+        val sidePadding = if (config.screenWidthDp < 360) 18 else 24
+        stackedCards = config.fontScale >= 1.5f || config.screenWidthDp < 340
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             setBackgroundColor(BG)
             overScrollMode = View.OVER_SCROLL_NEVER
         }
         EneidaTheme.applyInsets(scroll)
-        val root = LinearLayout(this).apply {
+        val frame = FrameLayout(this)
+        scroll.addView(frame, ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val root = EneidaTheme.column(this, if (wide) 960 else 560).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(18), dp(24), dp(24))
+            setPadding(dp(sidePadding), dp(16), dp(sidePadding), dp(20))
         }
-        scroll.addView(root, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+        frame.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
 
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(icon(R.drawable.ic_eneida_mark, 46), LinearLayout.LayoutParams(dp(46), dp(46)))
+        header.addView(icon(R.drawable.ic_eneida_mark, 42), LinearLayout.LayoutParams(dp(42), dp(42)))
         val brand = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, 0, 0)
+            setPadding(dp(10), 0, dp(8), 0)
         }
-        brand.addView(label("Eneida", 25f, TEXT_PRIMARY, true, Gravity.START))
+        brand.addView(label("Eneida", 25f, TEXT_PRIMARY, true, Gravity.START).apply {
+            setSingleLine(true)
+            setAutoSizeTextTypeUniformWithConfiguration(18, 25, 1, TypedValue.COMPLEX_UNIT_SP)
+        }, lp())
         brand.addView(label("Личный VPN", 11f, TEXT_MUTED, false, Gravity.START), lp(top = 2))
         header.addView(brand, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(label(when (BuildConfig.BUILD_TYPE) { "effects" -> "FX"; "preview" -> "PREVIEW"; else -> "VPN" }, 10f, PRIMARY, true).apply {
-            letterSpacing = 0.12f
+            id = R.id.main_fx
+            letterSpacing = 0.1f
             minimumWidth = dp(48)
-            minimumHeight = dp(40)
+            minimumHeight = dp(48)
             if (BuildConfig.BUILD_TYPE == "effects") {
-                contentDescription = "Показать визуальные эффекты кнопки"
+                contentDescription = "Посмотреть эффекты кнопки"
                 isFocusable = true
                 setOnClickListener {
                     startActivity(Intent().setClassName(this@MainActivity, "com.kzvpn.app.ButtonGalleryActivity"))
                 }
             }
-            setPadding(dp(12), dp(7), dp(12), dp(7))
-            background = roundedDrawable(EneidaTheme.ACCENT_SURFACE, EneidaTheme.ACCENT_SURFACE, dp(20).toFloat())
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = EneidaTheme.interactiveSurface(this@MainActivity,
+                EneidaTheme.ACCENT_SURFACE, EneidaTheme.ACCENT_SURFACE, 24)
         })
         root.addView(header, lp())
+        val body = LinearLayout(this).apply {
+            orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            gravity = Gravity.TOP
+        }
+        root.addView(body, lp(top = if (wide) 16 else 20))
+        val hero = LinearLayout(this).apply {
+            id = R.id.main_hero
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        val details = LinearLayout(this).apply {
+            id = R.id.main_details
+            orientation = LinearLayout.VERTICAL
+        }
+        body.addView(hero, if (wide) LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            else LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        body.addView(details, if (wide) LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginStart = dp(24)
+        } else LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        status = label("VPN отключён", 25f, TEXT_PRIMARY, true)
-        root.addView(status, lp(top = 28))
-        statusHint = label("Выберите сервер и подключитесь", 13f, TEXT_MUTED)
-        statusHint.maxLines = 2
-        root.addView(statusHint, lp(top = 8))
-        sessionText = label("Сеанс 00:00:00", 12f, PRIMARY).apply {
+        status = label("VPN отключён", if (wide) 22f else 24f, TEXT_PRIMARY, true).apply {
+            id = R.id.main_status
+            maxLines = 2
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        hero.addView(status, lp())
+        statusHint = label("Добавьте профиль WireGuard", 12f, TEXT_MUTED).apply { maxLines = 3 }
+        hero.addView(statusHint, lp(top = 7))
+        sessionText = label("Профиль .conf", 11f, PRIMARY).apply {
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             setPadding(dp(12), dp(5), dp(12), dp(5))
             background = roundedDrawable(EneidaTheme.ACCENT_SURFACE, EneidaTheme.ACCENT_SURFACE, dp(16).toFloat())
-            visibility = View.INVISIBLE
         }
-        root.addView(sessionText, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(12) })
-
+        hero.addView(sessionText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         powerButton = EneidaPowerButton(this).apply {
+            id = R.id.main_power
             setOnClickListener { handlePowerTap() }
         }
-        val buttonSize = (resources.configuration.screenWidthDp - 48).coerceIn(1, 304)
-        root.addView(powerButton, LinearLayout.LayoutParams(dp(buttonSize), dp(buttonSize)).apply {
+        val heroWidth = if (wide) (minOf(config.screenWidthDp, 960) - sidePadding * 2 - 24) / 2
+            else minOf(config.screenWidthDp, 560) - sidePadding * 2
+        val desiredSize = when {
+            wide -> (config.screenHeightDp - 210).coerceIn(160, 256)
+            config.fontScale >= 1.5f || config.screenHeightDp < 700 -> 216
+            config.screenHeightDp < 800 -> 256
+            else -> 288
+        }
+        val buttonSize = minOf(heroWidth, desiredSize).coerceAtLeast(100)
+        hero.addView(powerButton, LinearLayout.LayoutParams(dp(buttonSize), dp(buttonSize)).apply {
             topMargin = dp(2)
-            bottomMargin = dp(2)
+            bottomMargin = dp(if (wide) 0 else 6)
         })
 
-        val serverCard = LinearLayout(this).apply {
+        serverCard = LinearLayout(this).apply {
+            id = R.id.main_server
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(17), dp(14), dp(17))
-            background = roundedDrawable(CARD, BORDER, dp(22).toFloat())
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = EneidaTheme.interactiveSurface(this@MainActivity, CARD, BORDER, 22)
             isClickable = true
             isFocusable = true
-            contentDescription = "Выбор VPN-сервера"
             setOnClickListener { if (api.enabled) openRegions() else openServers() }
         }
-        serverCard.addView(icon(R.drawable.ic_server, 23).apply {
-            setPadding(dp(11), dp(11), dp(11), dp(11))
+        serverCard.addView(icon(R.drawable.ic_server, 22).apply {
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             background = roundedDrawable(EneidaTheme.ACCENT_SURFACE, EneidaTheme.ACCENT_SURFACE, dp(14).toFloat())
-        }, LinearLayout.LayoutParams(dp(46), dp(46)))
+        }, LinearLayout.LayoutParams(dp(42), dp(42)))
         val serverInfo = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(13), 0, dp(6), 0)
+            setPadding(dp(12), 0, dp(6), 0)
         }
-        serverInfo.addView(label("СЕРВЕР", 10f, TEXT_SOFT, true, Gravity.START).apply { letterSpacing = 0.12f })
-        serverValue = label("Выберите сервер", 17f, TEXT_PRIMARY, true, Gravity.START)
-        serverInfo.addView(serverValue, lp(top = 5))
-        serverHint = label("Нажмите для настройки", 11f, TEXT_MUTED, false, Gravity.START)
-        serverInfo.addView(serverHint, lp(top = 5))
+        serverInfo.addView(label("СЕРВЕР", 10f, TEXT_SOFT, true, Gravity.START).apply { letterSpacing = 0.1f })
+        serverValue = label("Добавьте сервер", 17f, TEXT_PRIMARY, true, Gravity.START).apply {
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        serverInfo.addView(serverValue, lp(top = 4))
+        serverHint = label("Импорт файла .conf", 11f, TEXT_MUTED, false, Gravity.START)
+        serverInfo.addView(serverHint, lp(top = 4))
         serverCard.addView(serverInfo, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         serverCard.addView(icon(R.drawable.ic_chevron, 18, TEXT_SOFT), LinearLayout.LayoutParams(dp(20), dp(20)))
-        root.addView(serverCard, lp())
+        details.addView(serverCard, lp())
 
-        val stats = LinearLayout(this)
+        val stats = LinearLayout(this).apply {
+            orientation = if (stackedCards) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        }
         val receive = statCard("ПОЛУЧЕНО", R.drawable.ic_download, EneidaTheme.BLUE)
         rxValue = receive.second
         rxRateValue = receive.third
-        stats.addView(receive.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        stats.addView(Space(this), LinearLayout.LayoutParams(dp(12), 1))
         val send = statCard("ОТПРАВЛЕНО", R.drawable.ic_upload, PRIMARY)
         txValue = send.second
         txRateValue = send.third
-        stats.addView(send.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(stats, lp(top = 12))
-
-        val shortcuts = LinearLayout(this)
+        if (stackedCards) {
+            stats.addView(receive.first, lp())
+            stats.addView(send.first, lp(top = 10))
+        } else {
+            stats.addView(receive.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            stats.addView(Space(this), LinearLayout.LayoutParams(dp(12), 1))
+            stats.addView(send.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        details.addView(stats, lp(top = 12))
+        val shortcuts = LinearLayout(this).apply {
+            orientation = if (stackedCards) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        }
+        fun shortcutParams() = if (stackedCards) lp() else
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         serversButton = secondaryButton("Серверы", R.drawable.ic_server) { openServers() }
         if (!api.enabled) {
-            shortcuts.addView(serversButton, LinearLayout.LayoutParams(0, dp(54), 1f))
-            shortcuts.addView(Space(this), LinearLayout.LayoutParams(dp(12), 1))
+            shortcuts.addView(serversButton, shortcutParams())
+            shortcuts.addView(Space(this), if (stackedCards) LinearLayout.LayoutParams(1, dp(10))
+                else LinearLayout.LayoutParams(dp(12), 1))
         }
         val protection = secondaryButton("Защита", R.drawable.ic_shield) {
             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
         }
         protection.contentDescription = "Постоянная защита: настройки VPN Android"
-        shortcuts.addView(protection, LinearLayout.LayoutParams(0, dp(54), 1f))
-        root.addView(shortcuts, lp(top = 16))
+        shortcuts.addView(protection, shortcutParams())
+        details.addView(shortcuts, lp(top = 12))
         paymentButton = secondaryButton("Подписка и оплата", R.drawable.ic_card) { openPayment() }.apply {
             visibility = if (api.enabled) View.VISIBLE else View.GONE
         }
-        root.addView(paymentButton, lp(top = if (api.enabled) 12 else 0))
-
+        details.addView(paymentButton, lp(top = if (api.enabled) 12 else 0))
         message = label("", 13f, ERROR).apply {
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
             background = roundedDrawable(ERROR_BG, ERROR_BORDER, dp(16).toFloat())
             setPadding(dp(14), dp(12), dp(14), dp(12))
             visibility = View.GONE
         }
-        root.addView(message, lp(top = 14))
-        root.addView(label("ENEIDA  ·  " + BuildConfig.VERSION_NAME, 10f, TEXT_SOFT).apply {
-            letterSpacing = 0.1f
-        }, lp(top = 22))
+        details.addView(message, lp(top = 12))
+        details.addView(label("ENEIDA  ·  " + BuildConfig.VERSION_NAME, 10f, TEXT_SOFT).apply {
+            id = R.id.main_footer
+            letterSpacing = 0.08f
+        }, lp(top = 16))
         return scroll
     }
 
@@ -241,7 +301,7 @@ class MainActivity : Activity() {
     private fun statCard(title: String, resource: Int, color: Int): Triple<LinearLayout, TextView, TextView> {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(15), dp(16), dp(15))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
             background = roundedDrawable(CARD, BORDER, dp(20).toFloat())
         }
         val heading = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -251,9 +311,12 @@ class MainActivity : Activity() {
             setPadding(dp(7), 0, 0, 0)
         })
         card.addView(heading)
-        val value = label("0 B", 23f, TEXT_PRIMARY, true, Gravity.START)
-        card.addView(value, lp(top = 11))
-        val rate = label("0 B/с", 11f, color, false, Gravity.START)
+        val value = label("0 Б", 23f, TEXT_PRIMARY, true, Gravity.START).apply {
+            setSingleLine(true)
+            setAutoSizeTextTypeUniformWithConfiguration(18, 23, 1, TypedValue.COMPLEX_UNIT_SP)
+        }
+        card.addView(value, lp(top = 9))
+        val rate = label("0 Б/с", 11f, color, false, Gravity.START)
         card.addView(rate, lp(top = 5))
         return Triple(card, value, rate)
     }
@@ -267,7 +330,8 @@ class MainActivity : Activity() {
             setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL))
             stateListAnimator = null
             backgroundTintList = null
-            background = roundedDrawable(CARD, BORDER, dp(16).toFloat())
+            background = EneidaTheme.interactiveSurface(this@MainActivity, CARD, BORDER, 16)
+            minimumHeight = dp(52)
             setPadding(dp(12), dp(12), dp(12), dp(12))
             setCompoundDrawablesRelativeWithIntrinsicBounds(resource, 0, 0, 0)
             compoundDrawableTintList = ColorStateList.valueOf(PRIMARY)
@@ -280,6 +344,10 @@ class MainActivity : Activity() {
             VpnController.ConnectionStatus.CONNECTED -> controller.disconnect()
             VpnController.ConnectionStatus.DISCONNECTED -> {
                 if (!api.enabled) {
+                    if (!controller.state.value.configured) {
+                        openServers()
+                        return
+                    }
                     requestVpn()
                     return
                 }
@@ -538,7 +606,7 @@ class MainActivity : Activity() {
             api.enabled && !state.configured ->
                 "Eneida автоматически настроит VPN"
             !state.configured ->
-                "Добавьте VPN-сервер для подключения"
+                "Добавьте профиль WireGuard, чтобы начать"
             else -> "Нажмите кнопку, чтобы включить защиту"
         }
         crossfadeText(statusHint, nextHint)
@@ -553,12 +621,12 @@ class MainActivity : Activity() {
                 "Нажмите, чтобы выбрать регион"
             }
         } else {
-            serverValue.text = state.activeServerName
+            serverValue.text = if (state.configured) state.activeServerName else "Добавьте сервер"
             serverHint.text = when {
                 state.servers.size > 1 ->
                     "${state.servers.size} серверов • нажмите для быстрой смены"
                 state.configured -> "WireGuard • нажмите для управления"
-                else -> "Нажмите, чтобы добавить сервер"
+                else -> "Импорт файла .conf"
             }
         }
 
@@ -567,7 +635,7 @@ class MainActivity : Activity() {
             connected -> true
             !disconnected -> false
             api.enabled -> subscriptionKnown
-            else -> state.configured
+            else -> true
         }
 
         val buttonLabel = when {
@@ -576,20 +644,22 @@ class MainActivity : Activity() {
             state.connectionStatus == VpnController.ConnectionStatus.CONNECTING -> "Подключение…"
             state.connectionStatus == VpnController.ConnectionStatus.DISCONNECTING -> "Выключение…"
             api.enabled && subscriptionKnown && !subscriptionActive -> "Подписка"
+            !api.enabled && !state.configured -> "Настроить"
             else -> "Включить"
         }
         powerButton.setVisualState(visualState, buttonLabel, buttonEnabled)
         if (!state.configured && !api.enabled) {
-            powerButton.contentDescription = "Добавьте сервер для включения VPN"
+            powerButton.contentDescription = "Добавить сервер для подключения VPN"
         }
 
+        serverCard.contentDescription = "${serverValue.text}. ${serverHint.text}"
         rxValue.text = formatBytes(state.rxBytes)
         txValue.text = formatBytes(state.txBytes)
         rxRateValue.text = formatRate(state.rxRate)
         txRateValue.text = formatRate(state.txRate)
 
-        updateSessionVisibility(connected)
-        sessionText.text = "Сеанс " + formatDuration(state.sessionSeconds)
+        sessionText.text = if (connected) "Сеанс " + formatDuration(state.sessionSeconds)
+            else if (state.configured || api.enabled) "WireGuard" else "Профиль .conf"
 
         val msg = state.message.orEmpty()
         message.text = msg
@@ -624,40 +694,11 @@ class MainActivity : Activity() {
     private fun crossfadeText(view: TextView, value: String) {
         if (view.text.toString() == value) return
         view.animate().cancel()
-        view.animate()
-            .alpha(0f)
-            .setDuration(90)
-            .withEndAction {
-                view.text = value
-                view.animate()
-                    .alpha(1f)
-                    .setDuration(150)
-                    .start()
-            }
-            .start()
-    }
-
-    private fun updateSessionVisibility(visible: Boolean) {
-        if (visible) {
-            if (sessionText.visibility != View.VISIBLE) {
-                sessionText.alpha = 0f
-                sessionText.visibility = View.VISIBLE
-                sessionText.animate().alpha(1f).setDuration(220).start()
-            }
-        } else if (sessionText.visibility == View.VISIBLE) {
-            sessionText.animate().cancel()
-            sessionText.animate()
-                .alpha(0f)
-                .setDuration(140)
-                .withEndAction {
-                    sessionText.visibility = View.INVISIBLE
-                    sessionText.alpha = 1f
-                }
-                .start()
-        } else {
-            sessionText.visibility = View.INVISIBLE
-            sessionText.alpha = 1f
-        }
+        view.text = value
+        if (view.isShown && hasWindowFocus() && ValueAnimator.areAnimatorsEnabled()) {
+            view.alpha = 0.65f
+            view.animate().alpha(1f).setDuration(180).start()
+        } else view.alpha = 1f
     }
 
     private fun roundedDrawable(fill: Int, stroke: Int, radius: Float): GradientDrawable =
@@ -690,19 +731,20 @@ class MainActivity : Activity() {
     }
 
     private fun formatBytes(bytes: Long): String {
-        if (bytes < 1024) return bytes.toString() + " B"
-        val units = arrayOf("KB", "MB", "GB", "TB")
+        if (bytes < 1024) return bytes.toString() + " Б"
+        val units = arrayOf("КБ", "МБ", "ГБ", "ТБ")
         var value = bytes.toDouble()
         var index = -1
         do {
             value /= 1024.0
             index++
         } while (value >= 1024 && index < units.lastIndex)
-        return String.format(Locale.US, "%.1f %s", value, units[index])
+        return String.format(RU_LOCALE, "%.1f %s", value, units[index])
     }
 
     companion object {
         private const val REQ_VPN = 1001
+        private val RU_LOCALE = Locale.forLanguageTag("ru-RU")
 
         private val BG = EneidaTheme.BACKGROUND
         private val CARD = EneidaTheme.SURFACE

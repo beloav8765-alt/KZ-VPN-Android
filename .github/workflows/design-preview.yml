@@ -35,7 +35,7 @@ jobs:
       - name: Build effects APK
         run: |
           gradle --no-daemon --console=plain :app:assembleEffects
-          cp app/build/outputs/apk/effects/app-effects.apk Eneida-0.9.4-fx.apk
+          cp app/build/outputs/apk/effects/app-effects.apk Eneida-0.9.5-fx.apk
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -56,9 +56,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Eneida-0.9.4-fx
+          name: Eneida-0.9.5-fx
           path: |
-            Eneida-0.9.4-fx.apk
+            Eneida-0.9.5-fx.apk
             artifacts/design/
+          overwrite: true
           retention-days: 14
           if-no-files-found: error

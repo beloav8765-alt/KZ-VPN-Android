@@ -13,7 +13,7 @@ PACKAGE = "com.kzvpn.app.v032.fx"
 
 
 def adb(*args):
-    return subprocess.check_output(["adb", *args])
+    return subprocess.check_output(["adb", *args], timeout=45)
 
 
 def hierarchy(name):
@@ -69,31 +69,75 @@ def main():
     for label in ("Eneida", "VPN отключён", "FX"):
         if label not in text:
             raise RuntimeError("Home screen did not render: " + label)
+    setup = next(node for node in root.iter("node") if node.get("resource-id", "").endswith("/main_power"))
+    if setup.get("text") != "Настроить" or setup.get("enabled") != "true":
+        raise RuntimeError("First-launch power action is not available")
+    if setup.get("class") != "android.widget.Button":
+        raise RuntimeError("Power action has no accessible button role")
     screenshot("home")
-    tap_text("Серверы")
+    tap_resource("main_power")
     time.sleep(2)
     root = hierarchy("servers")
     if not any("Добавить сервер" in node.get("text", "") for node in root.iter("node")):
         raise RuntimeError("Server picker did not open")
     screenshot("servers")
     adb("shell", "input", "keyevent", "4")
-    adb("shell", "settings", "put", "system", "font_scale", "1.3")
-    time.sleep(3)
+    # Compact phone, then large text: every action must remain reachable by scrolling.
+    adb("shell", "wm", "size", "720x1280")
+    adb("shell", "wm", "density", "320")
+    time.sleep(2)
+    screenshot("home-compact")
+    hierarchy("home-compact")
+    adb("shell", "settings", "put", "system", "font_scale", "1.6")
+    time.sleep(2)
     screenshot("home-large-text")
     hierarchy("home-large-text")
+    for attempt in range(6):
+        root = hierarchy("large-text-scroll")
+        footer = next((n for n in root.iter("node") if n.get("resource-id", "").endswith("/main_footer")), None)
+        if footer is not None and "0.9.5-fx" in footer.get("text", ""):
+            b = [int(x) for x in re.findall(r"\d+", footer.get("bounds", ""))]
+            if len(b) == 4 and b[3] > b[1] and b[3] < 1240:
+                break
+        adb("shell", "input", "swipe", "360", "1100", "360", "350", "300")
+    else:
+        raise RuntimeError("Large-text footer is not reachable")
+    screenshot("home-large-text-bottom")
+    tap_text("Серверы")
+    time.sleep(1)
+    screenshot("servers-large-text")
+    adb("shell", "input", "keyevent", "4")
     # The effects-only gallery is explicitly labelled as a visual demonstration.
     adb("shell", "settings", "put", "system", "font_scale", "1.0")
     adb("shell", "wm", "size", "1920x1080")
     adb("shell", "wm", "density", "320")
     adb("shell", "settings", "put", "global", "animator_duration_scale", "1")
-    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/com.kzvpn.app.ButtonGalleryActivity")
-    time.sleep(3)
+    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/com.kzvpn.app.MainActivity")
+    time.sleep(2)
+    root = hierarchy("home-landscape")
+    hero = resource_point(root, "main_hero")
+    details = resource_point(root, "main_details")
+    if int(hero[0]) >= int(details[0]):
+        raise RuntimeError("Landscape layout did not use two columns")
+    screenshot("home-landscape")
+    tap_resource("main_fx")
+    time.sleep(2)
     adb("shell", "input", "tap", "960", "140")
     root = hierarchy("buttons-reference")
     texts = " ".join(node.get("text", "") for node in root.iter("node"))
     for value in ("Включить", "Выключить", "Демонстрация"):
         if value not in texts:
             raise RuntimeError("Button gallery did not render: " + value)
+    # Moving off the round target must cancel the press, even inside its square bounds.
+    button = next(n for n in root.iter("node") if n.get("resource-id", "").endswith("/demo_power_off"))
+    bounds = [int(x) for x in re.findall(r"\d+", button.get("bounds", ""))]
+    point = resource_point(root, "demo_power_off")
+    adb("shell", "input", "swipe", *point, str(bounds[0] + 8), point[1], "250")
+    time.sleep(1)
+    root = hierarchy("cancelled-touch")
+    button = next(n for n in root.iter("node") if n.get("resource-id", "").endswith("/demo_power_off"))
+    if button.get("text") != "Включить":
+        raise RuntimeError("Dragging outside the circular target triggered a click")
     screenshot("buttons-reference")
     off_point = resource_point(root, "demo_power_off")
     on_point = resource_point(root, "demo_power_on")
@@ -114,10 +158,23 @@ def main():
     if len(video) < 1000:
         raise RuntimeError("Empty effects recording")
     (OUTPUT / "button-effects.mp4").write_bytes(video)
+    # The gallery keeps its visual state across orientation changes.
+    tap_resource("demo_power_off")
+    time.sleep(1.5)
+    adb("shell", "wm", "size", "1080x2340")
+    adb("shell", "wm", "density", "420")
+    time.sleep(2)
+    root = hierarchy("gallery-portrait")
+    first = next(n for n in root.iter("node") if n.get("resource-id", "").endswith("/demo_power_off"))
+    if first.get("text") != "Выключить":
+        raise RuntimeError("Gallery lost its state after rotation")
+    screenshot("gallery-portrait")
     # Also verify the reduced-motion setting on the same native view.
     adb("shell", "settings", "put", "global", "animator_duration_scale", "0")
+    adb("shell", "wm", "size", "1920x1080")
+    adb("shell", "wm", "density", "320")
     adb("shell", "am", "force-stop", PACKAGE)
-    adb("shell", "am", "start", "-W", "-n", PACKAGE + "/com.kzvpn.app.ButtonGalleryActivity")
+    adb("shell", "am", "start", "-W", "-f", "0x10008000", "-n", PACKAGE + "/com.kzvpn.app.ButtonGalleryActivity")
     time.sleep(2)
     tap_resource("demo_power_off")
     time.sleep(1.2)
@@ -127,7 +184,7 @@ def main():
         raise RuntimeError("Reduced-motion transition did not reach its final state")
     screenshot("buttons-reduced-motion")
     (OUTPUT / "logcat.txt").write_bytes(adb("logcat", "-d", "-t", "500"))
-    print("Captured Android screens, both power states, transition video and reduced-motion mode.")
+    print("Verified first launch, compact/large-text/landscape layouts, drag cancellation, rotation, effects and reduced motion.")
 
 
 if __name__ == "__main__":

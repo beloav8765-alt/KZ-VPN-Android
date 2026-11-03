@@ -20,6 +20,12 @@ class ButtonGalleryActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedInstanceState?.getStringArray("button_modes")?.forEachIndexed { index, value ->
+            if (index in modes.indices) {
+                modes[index] = runCatching { EneidaPowerButton.Mode.valueOf(value) }
+                    .getOrDefault(EneidaPowerButton.Mode.DISCONNECTED)
+            }
+        }
         EneidaTheme.prepareWindow(this)
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -92,6 +98,17 @@ class ButtonGalleryActivity : Activity() {
         headings[index].setTextColor(if (mode == EneidaPowerButton.Mode.CONNECTED) EneidaTheme.ACCENT else EneidaTheme.TEXT_PRIMARY)
         buttons[index].setVisualState(mode, label, mode == EneidaPowerButton.Mode.DISCONNECTED || mode == EneidaPowerButton.Mode.CONNECTED)
         buttons[index].contentDescription = "Демонстрация: $label"
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putStringArray("button_modes", modes.map {
+            when (it) {
+                EneidaPowerButton.Mode.CONNECTING -> EneidaPowerButton.Mode.CONNECTED
+                EneidaPowerButton.Mode.DISCONNECTING -> EneidaPowerButton.Mode.DISCONNECTED
+                else -> it
+            }.name
+        }.toTypedArray())
+        super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {

@@ -1,4 +1,11 @@
 <resources>
     <item name="demo_power_off" type="id" />
     <item name="demo_power_on" type="id" />
+    <item name="main_power" type="id" />
+    <item name="main_server" type="id" />
+    <item name="main_fx" type="id" />
+    <item name="main_status" type="id" />
+    <item name="main_footer" type="id" />
+    <item name="main_hero" type="id" />
+    <item name="main_details" type="id" />
 </resources>

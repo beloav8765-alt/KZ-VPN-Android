@@ -2,6 +2,8 @@ package com.kzvpn.app
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.os.Build
+import android.util.TypedValue
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -56,6 +58,7 @@ class EneidaPowerButton(context: Context) : View(context) {
     private var touchX = 0f
     private var touchY = 0f
     private var effectsActive = true
+    private var trackingTouch = false
     private var transition: ValueAnimator? = null
     private var press: ValueAnimator? = null
     private var ripple: ValueAnimator? = null
@@ -65,6 +68,7 @@ class EneidaPowerButton(context: Context) : View(context) {
     init {
         isClickable = true
         isFocusable = true
+        defaultFocusHighlightEnabled = false
         isHapticFeedbackEnabled = true
         contentDescription = "Включить VPN"
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
@@ -84,6 +88,14 @@ class EneidaPowerButton(context: Context) : View(context) {
             Mode.CONNECTING -> "Подключение VPN"
             Mode.DISCONNECTING -> "Выключение VPN"
             Mode.DISCONNECTED -> if (label == "Включить") "Включить VPN" else label
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            stateDescription = when (next) {
+                Mode.DISCONNECTED -> "VPN отключён"
+                Mode.CONNECTING -> "Подключение"
+                Mode.CONNECTED -> "VPN подключён"
+                Mode.DISCONNECTING -> "Отключение"
+            }
         }
         val target = if (next == Mode.CONNECTED || next == Mode.DISCONNECTING) 1f else 0f
         transition?.cancel()
@@ -109,6 +121,8 @@ class EneidaPowerButton(context: Context) : View(context) {
         ripple = null
         success = null
         progress = null
+        trackingTouch = false
+        isPressed = false
         pressFraction = 0f
         rippleFraction = 1f
         successFraction = 1f
@@ -261,13 +275,18 @@ class EneidaPowerButton(context: Context) : View(context) {
             canvas.drawCircle(cx, cy, radius * (1f + successFraction * 0.22f), linePaint)
         }
 
-        val glyph = if (unavailable) EneidaTheme.TEXT_SOFT else blend(EneidaTheme.BACKGROUND, EneidaTheme.ACCENT, mix)
+        // Keep the foreground readable while the background crossfades.
+        val darkForeground = mix < 0.56f
+        val glyph = if (unavailable) EneidaTheme.TEXT_SOFT
+            else if (darkForeground) EneidaTheme.BACKGROUND else EneidaTheme.ACCENT
         linePaint.color = glyph
         linePaint.strokeWidth = diameter * 0.047f
         canvas.drawArc(arcBounds, -50f, 280f, false, linePaint)
         canvas.drawLine(cx, cy - diameter * 0.24f, cx, cy - diameter * 0.08f, linePaint)
-        textPaint.color = if (unavailable) EneidaTheme.TEXT_SOFT else blend(EneidaTheme.BACKGROUND, EneidaTheme.TEXT_PRIMARY, mix)
-        val desiredText = diameter * 0.098f * resources.configuration.fontScale
+        textPaint.color = if (unavailable) EneidaTheme.TEXT_SOFT
+            else if (darkForeground) EneidaTheme.BACKGROUND else EneidaTheme.TEXT_PRIMARY
+        val desiredText = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,
+            diameter * 0.098f / resources.displayMetrics.density, resources.displayMetrics)
         textPaint.textSize = desiredText
         val width = textPaint.measureText(caption)
         if (width > diameter * 0.82f) textPaint.textSize = desiredText * diameter * 0.82f / width
@@ -286,24 +305,41 @@ class EneidaPowerButton(context: Context) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (!isEnabled || !inside) return false
+                trackingTouch = true
                 touchX = event.x
                 touchY = event.y
                 press?.cancel()
                 press = animate(pressFraction, 1f, 90L) { pressFraction = it }
             }
+            MotionEvent.ACTION_MOVE -> {
+                if (trackingTouch && !inside) {
+                    trackingTouch = false
+                    press?.cancel()
+                    press = animate(pressFraction, 0f, 180L) { pressFraction = it }
+                    cancelTouch(event)
+                    return true
+                }
+                if (!trackingTouch) return true
+            }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 press?.cancel()
                 press = animate(pressFraction, 0f, 180L) { pressFraction = it }
-                if (!inside && event.actionMasked == MotionEvent.ACTION_UP) {
-                    val cancel = MotionEvent.obtain(event)
-                    cancel.action = MotionEvent.ACTION_CANCEL
-                    super.onTouchEvent(cancel)
-                    cancel.recycle()
+                val cancelled = !trackingTouch || !inside
+                trackingTouch = false
+                if (cancelled && event.actionMasked == MotionEvent.ACTION_UP) {
+                    cancelTouch(event)
                     return true
                 }
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun cancelTouch(event: MotionEvent) {
+        val cancel = MotionEvent.obtain(event)
+        cancel.action = MotionEvent.ACTION_CANCEL
+        super.onTouchEvent(cancel)
+        cancel.recycle()
     }
 
     override fun performClick(): Boolean {

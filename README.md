@@ -1,6 +1,6 @@
 # Eneida VPN (Android)
 
-Android-клиент WireGuard. Актуальная версия в `app/build.gradle.kts`: **0.9.4**.
+Android-клиент WireGuard. Актуальная версия в `app/build.gradle.kts`: **0.9.5**.
 До выпуска исправлений используйте стабильную сборку своей установленной версии.
 
 ## Возможности
@@ -27,7 +27,7 @@ gradle :app:testDebugUnitTest :app:assembleDebug
 ```
 
 GitHub Actions выполняет тесты и debug-сборку для pull requests в `main`.
-При успешной сборке публикуется artifact **Eneida-0.9.4-debug**. APK внутри
+При успешной сборке публикуется artifact **Eneida-0.9.5-debug**. APK внутри
 артефакта предназначен для тестирования, а не для подписанного релиза.
 
 ## Ручная проверка перед выпуском
