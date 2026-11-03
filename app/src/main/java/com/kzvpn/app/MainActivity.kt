@@ -106,7 +106,7 @@ class MainActivity : Activity() {
         }
         EneidaTheme.applyInsets(scroll)
         val frame = FrameLayout(this)
-        scroll.addView(frame, ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        scroll.addView(frame, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val root = EneidaTheme.column(this, if (wide) 960 else 560).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL

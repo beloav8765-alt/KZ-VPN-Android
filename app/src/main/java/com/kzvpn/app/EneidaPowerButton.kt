@@ -38,6 +38,7 @@ class EneidaPowerButton(context: Context) : View(context) {
         typeface = Typeface.create("sans-serif", Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
+    private val captionMetrics = Paint.FontMetrics()
     private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val clipCircle = Path()
     private val arcBounds = RectF()
@@ -290,7 +291,18 @@ class EneidaPowerButton(context: Context) : View(context) {
         textPaint.textSize = desiredText
         val width = textPaint.measureText(caption)
         if (width > diameter * 0.82f) textPaint.textSize = desiredText * diameter * 0.82f / width
-        canvas.drawText(caption, cx, cy + diameter * 0.265f, textPaint)
+        textPaint.getFontMetrics(captionMetrics)
+        val textTop = arcBounds.bottom + linePaint.strokeWidth / 2f + diameter * 0.05f
+        var baseline = maxOf(cy + diameter * 0.265f, textTop - captionMetrics.ascent)
+        val bottomOffset = baseline + captionMetrics.descent - cy
+        val safeWidth = 1.88f * kotlin.math.sqrt(maxOf(0f, radius * radius - bottomOffset * bottomOffset))
+        val measuredWidth = textPaint.measureText(caption)
+        if (measuredWidth > safeWidth && safeWidth > 0f) {
+            textPaint.textSize *= safeWidth / measuredWidth
+            textPaint.getFontMetrics(captionMetrics)
+            baseline = maxOf(cy + diameter * 0.265f, textTop - captionMetrics.ascent)
+        }
+        canvas.drawText(caption, cx, baseline, textPaint)
 
         if (isFocused && !isInTouchMode) {
             linePaint.color = EneidaTheme.ACCENT
