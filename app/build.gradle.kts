@@ -13,9 +13,27 @@ android {
         applicationId = "com.kzvpn.app.v032"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "0.9.2"
+        versionCode = 23
+        versionName = "0.9.5"
+        manifestPlaceholders["appLabel"] = "Eneida"
         buildConfigField("String", "CONTROL_API_BASE_URL", "\"" + eneidaApiBaseUrl.replace("\"", "\\\"") + "\"")
+    }
+
+    buildTypes {
+        create("effects") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".fx"
+            versionNameSuffix = "-fx"
+            manifestPlaceholders["appLabel"] = "Eneida FX"
+            matchingFallbacks += listOf("debug")
+        }
+        create("preview") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            manifestPlaceholders["appLabel"] = "Eneida Preview"
+            matchingFallbacks += listOf("debug")
+        }
     }
 
     buildFeatures {
@@ -43,6 +61,7 @@ android {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    testImplementation("junit:junit:4.13.2")
     implementation("com.wireguard.android:tunnel:1.0.20260102")
     implementation("com.google.zxing:core:3.5.3")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")

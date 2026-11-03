@@ -120,6 +120,21 @@ class EneidaApiClient {
         identity: DeviceIdentityStore.Identity,
         provisioning: Provisioning
     ): ByteArray {
+        // Control API data must never inject additional WireGuard configuration lines.
+        val values = listOf(
+            identity.privateKey,
+            provisioning.address,
+            provisioning.dns,
+            provisioning.serverPublicKey,
+            provisioning.endpoint,
+            provisioning.allowedIps
+        )
+        require(values.none { value -> value.any { it == '\r' || it == '\n' || it == '\u0000' } }) {
+            "Некорректные параметры VPN-сервера"
+        }
+        require(provisioning.mtu in 576..9000) { "Некорректный MTU сервера" }
+        require(provisioning.persistentKeepalive in 0..65535) { "Некорректный интервал Keepalive" }
+
         val text = buildString {
             appendLine("[Interface]")
             appendLine("PrivateKey = " + identity.privateKey)
@@ -146,29 +161,33 @@ class EneidaApiClient {
         connection.readTimeout = 15000
         connection.setRequestProperty("Accept", "application/json")
 
-        if (body != null) {
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.outputStream.use { output ->
-                output.write(body.toByteArray(Charsets.UTF_8))
+        try {
+            if (body != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.outputStream.use { output ->
+                    output.write(body.toByteArray(Charsets.UTF_8))
+                }
             }
+
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+
+            if (code !in 200..299) {
+                val detail = runCatching {
+                    JSONObject(text).optString("detail")
+                }.getOrNull()
+                throw EneidaApiException(
+                    code = code,
+                    message = detail?.ifBlank { null } ?: "Ошибка Eneida Control: $code"
+                )
+            }
+
+            return JSONObject(text)
+        } finally {
+            connection.disconnect()
         }
-
-        val code = connection.responseCode
-        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-        val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-
-        if (code !in 200..299) {
-            val detail = runCatching {
-                JSONObject(text).optString("detail")
-            }.getOrNull()
-            throw EneidaApiException(
-                code = code,
-                message = detail?.ifBlank { null } ?: "Ошибка Eneida Control: $code"
-            )
-        }
-
-        return JSONObject(text)
     }
 }
 

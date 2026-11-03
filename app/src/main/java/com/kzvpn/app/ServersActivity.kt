@@ -3,8 +3,10 @@ package com.kzvpn.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.util.TypedValue
+import android.text.TextUtils
 import android.database.Cursor
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -13,6 +15,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -35,6 +38,7 @@ class ServersActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        EneidaTheme.prepareWindow(this)
         setContentView(buildUi())
 
         uiScope.launch {
@@ -55,18 +59,16 @@ class ServersActivity : Activity() {
             setBackgroundColor(BG)
         }
 
-        val root = LinearLayout(this).apply {
+        EneidaTheme.applyInsets(scroll)
+        val frame = FrameLayout(this)
+        scroll.addView(frame, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val root = EneidaTheme.column(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(28))
             setBackgroundColor(BG)
         }
-        scroll.addView(
-            root,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+        frame.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
 
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -76,9 +78,11 @@ class ServersActivity : Activity() {
         val back = Button(this).apply {
             text = "‹"
             textSize = 30f
-            setTextColor(TEXT_DARK)
-            background = roundedDrawable(BG, BG, dp(10).toFloat())
+            setTextColor(TEXT_PRIMARY)
+            background = EneidaTheme.interactiveSurface(this@ServersActivity, BG, BG, 10)
+            contentDescription = "Назад"
             stateListAnimator = null
+            backgroundTintList = null
             setOnClickListener { finish() }
         }
         header.addView(back, LinearLayout.LayoutParams(dp(56), dp(52)))
@@ -86,11 +90,14 @@ class ServersActivity : Activity() {
         val title = TextView(this).apply {
             text = "Серверы"
             textSize = 26f
-            setTextColor(TEXT_DARK)
+            minimumHeight = dp(52)
+            setSingleLine(true)
+            setAutoSizeTextTypeUniformWithConfiguration(16, 26, 1, TypedValue.COMPLEX_UNIT_SP)
+            setTextColor(TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         }
-        header.addView(title, LinearLayout.LayoutParams(0, dp(52), 1f))
+        header.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(View(this), LinearLayout.LayoutParams(dp(56), dp(52)))
         root.addView(header)
 
@@ -105,11 +112,13 @@ class ServersActivity : Activity() {
         val addButton = Button(this).apply {
             text = "+ Добавить сервер"
             textSize = 16f
-            setTextColor(Color.WHITE)
+            setTextColor(EneidaTheme.ON_ACCENT)
             isAllCaps = false
             setTypeface(typeface, Typeface.BOLD)
             stateListAnimator = null
-            background = roundedDrawable(PRIMARY, PRIMARY, dp(16).toFloat())
+            backgroundTintList = null
+            background = EneidaTheme.interactiveSurface(this@ServersActivity, PRIMARY, PRIMARY, 16, EneidaTheme.ON_ACCENT)
+            minimumHeight = dp(52)
             setOnClickListener { openConfigPicker() }
         }
         root.addView(addButton, lp(top = 18))
@@ -200,14 +209,16 @@ class ServersActivity : Activity() {
 
         val name = TextView(this).apply {
             text = server.name
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
             textSize = 18f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
         }
         nameRow.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         val badge = TextView(this).apply {
-            text = if (active) "АКТИВЕН" else ""
+            text = if (active) "ВЫБРАН" else ""
             textSize = 10f
             setTextColor(SUCCESS)
             setTypeface(typeface, Typeface.BOLD)
@@ -223,31 +234,36 @@ class ServersActivity : Activity() {
             setPadding(0, dp(5), 0, 0)
         })
 
+        val stackActions = resources.configuration.fontScale >= 1.3f || resources.configuration.screenWidthDp < 380
         val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = if (stackActions) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+
+        fun actionParams(spaced: Boolean = false) =
+            LinearLayout.LayoutParams(if (stackActions) ViewGroup.LayoutParams.MATCH_PARENT else 0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, if (stackActions) 0f else 1f).apply {
+                if (spaced) {
+                    if (stackActions) topMargin = dp(8) else marginStart = dp(8)
+                }
+            }
 
         val use = smallButton(if (active) "Выбран" else "Использовать") {
             if (!active && !switching) controller.selectServer(server.id)
         }.apply {
             isEnabled = !active && !switching
         }
-        actions.addView(use, LinearLayout.LayoutParams(0, dp(50), 1f))
+        actions.addView(use, actionParams())
 
         val rename = smallButton("Переименовать") {
             showRenameDialog(server)
         }
-        actions.addView(rename, LinearLayout.LayoutParams(0, dp(50), 1f).apply {
-            marginStart = dp(8)
-        })
+        actions.addView(rename, actionParams(true))
 
         val delete = smallButton("Удалить") {
             showDeleteDialog(server)
         }
-        actions.addView(delete, LinearLayout.LayoutParams(0, dp(50), 1f).apply {
-            marginStart = dp(8)
-        })
+        actions.addView(delete, actionParams(true))
 
         card.addView(actions, lp(top = 12))
         return card
@@ -257,11 +273,15 @@ class ServersActivity : Activity() {
         Button(this).apply {
             text = title
             textSize = 11f
-            setTextColor(TEXT_DARK)
+            setTextColor(TEXT_PRIMARY)
             isAllCaps = false
             stateListAnimator = null
-            background = roundedDrawable(Color.WHITE, BORDER, dp(12).toFloat())
-            setPadding(dp(4), 0, dp(4), 0)
+            backgroundTintList = null
+            background = EneidaTheme.interactiveSurface(this@ServersActivity, EneidaTheme.SURFACE_RAISED, BORDER, 12)
+            minimumHeight = dp(50)
+            setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
+                intArrayOf(TEXT_MUTED, TEXT_PRIMARY)))
+            setPadding(dp(6), dp(8), dp(6), dp(8))
             setOnClickListener { action() }
         }
 
@@ -354,14 +374,14 @@ class ServersActivity : Activity() {
     companion object {
         private const val REQ_CONFIG = 2001
 
-        private val BG = Color.rgb(239, 243, 246)
-        private val CARD = Color.rgb(250, 252, 253)
-        private val PRIMARY = Color.rgb(46, 98, 138)
-        private val BORDER = Color.rgb(199, 211, 219)
-        private val ACTIVE_BG = Color.rgb(235, 246, 242)
-        private val ACTIVE_BORDER = Color.rgb(171, 210, 198)
-        private val TEXT_DARK = Color.rgb(48, 73, 91)
-        private val TEXT_MUTED = Color.rgb(105, 124, 138)
-        private val SUCCESS = Color.rgb(45, 125, 104)
+        private val BG = EneidaTheme.BACKGROUND
+        private val CARD = EneidaTheme.SURFACE
+        private val PRIMARY = EneidaTheme.ACCENT
+        private val BORDER = EneidaTheme.BORDER
+        private val ACTIVE_BG = EneidaTheme.ACCENT_SURFACE
+        private val ACTIVE_BORDER = EneidaTheme.ACCENT
+        private val TEXT_PRIMARY = EneidaTheme.TEXT_PRIMARY
+        private val TEXT_MUTED = EneidaTheme.TEXT_MUTED
+        private val SUCCESS = EneidaTheme.ACCENT
     }
 }

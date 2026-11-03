@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -45,20 +48,27 @@ jobs:
         shell: bash
         run: python -m py_compile agent/agent.py
 
+      - name: Check VPS diagnostic collector
+        shell: bash
+        run: |
+          python -m py_compile tools/diagnose-vpn.py
+          python tools/diagnose-vpn.py --seconds 1 > "$RUNNER_TEMP/eneida-diagnostics.json"
+          python -m json.tool "$RUNNER_TEMP/eneida-diagnostics.json" > /dev/null
+
       - name: Build APK
         shell: bash
         env:
           ENEIDA_API_BASE_URL: ${{ vars.ENEIDA_API_BASE_URL }}
-        run: gradle --no-daemon --console=plain :app:assembleDebug
+        run: gradle --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug
 
       - name: Rename APK
         shell: bash
-        run: cp app/build/outputs/apk/debug/app-debug.apk Eneida-0.9.2-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Eneida-0.9.5-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Eneida-0.9.2-debug
-          path: Eneida-0.9.2-debug.apk
+          name: Eneida-0.9.5-debug
+          path: Eneida-0.9.5-debug.apk
           if-no-files-found: error
           retention-days: 14
